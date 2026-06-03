@@ -280,14 +280,16 @@ plot_params <- function(ax_male, bx_male, kt_male,ax_female, bx_female, kt_femal
     
     plt1<- ggplot(frame, aes(x=age,y=ax,color=sex, group=sex)) +
         geom_line(aes(), size=1) +
-        labs(title="LC parameter ax", x="Age", y="Ax") +
+        labs(title="LC parameter ax", x="Age", y="ax") +
         theme_bw()+
-        scale_color_manual(values = c("female" = "red", "male" = "blue"))
+        scale_color_manual(values = c("female" = "red", "male" = "blue")) +
+        theme(legend.position = "bottom")
     plt2<- ggplot(frame, aes(x=age,y=bx,color=sex, group=sex)) +
         geom_line(aes(), size=1) +
-        labs(title="LC parameter bx", x="Age", y="Bx") +
+        labs(title="LC parameter bx", x="Age", y="bx") +
         theme_bw()+
-        scale_color_manual(values = c("female" = "red", "male" = "blue"))
+        scale_color_manual(values = c("female" = "red", "male" = "blue")) +
+        theme(legend.position = "bottom")
 
     rio::export(frame, "graphs/01_ax_bx.csv","csv")
     
@@ -300,7 +302,8 @@ plot_params <- function(ax_male, bx_male, kt_male,ax_female, bx_female, kt_femal
         geom_line(aes(), size=1) +
         labs(title="LC parameter kt", x="Year", y="Kt") +
         theme_bw()+
-        scale_color_manual(values = c("female" = "red", "male" = "blue"))
+        scale_color_manual(values = c("female" = "red", "male" = "blue")) +
+        theme(legend.position = "bottom")
     return(structure(  list(  ax_plot = plt1,  bx_plot = plt2,  kt_plot = plt3 )  ))
     
 }
@@ -462,12 +465,12 @@ plot_boot_params <- function(male_boot,female_boot, nBoots=nBoot){
         geom_point() +
         theme_bw() +
         facet_wrap(~sex, ncol=1)+
-        labs(title="Bootstrap residuals for ax", x="Age", y="Ax")
+        labs(title="Bootstrap residuals for ax", x="Age", y="ax")
     plt5 <- ggplot(df, aes(x=as.factor(age), y=delta_bx)) +
         geom_point() +
         theme_bw() +
         facet_wrap(~sex, ncol=1)+
-        labs(title="Bootstrap residuals for bx", x="Age", y="Bx")
+        labs(title="Bootstrap residuals for bx", x="Age", y="bx")
     plt6 <- ggplot(kt, aes(x=year, y=delta_kt)) +
         geom_point() +
         theme_bw() +
@@ -547,7 +550,26 @@ plt_sim_kt <- sim_kt |> ggplot(aes(x=year)) +
     geom_line(aes(y=q_0025, color = sex), linetype = "dashed") +
     scale_color_manual(values = c("male" = "blue", "female"="red"))+
     theme_bw() +
-    labs(title="Simulated kt by sex 2022-2072", x="Year", y="Kt")
+    labs(title="Simulated kt by sex 2022-2072", x="Year", y="Kt")+
+    theme(legend.position = "bottom")
+
+
+plt_sim_kt <- sim_kt |> ggplot(aes(x = year)) +
+    geom_line(aes(y = q_0975, color = sex, linetype = "95% Interval")) +
+    geom_line(aes(y = q_0500, color = sex, linetype = "Median")) +
+    geom_line(aes(y = q_0025, color = sex, linetype = "95% Interval")) +
+    scale_color_manual(values = c("male" = "blue", "female" = "red")) +
+    scale_linetype_manual(values = c("Median" = "solid", "95% Interval" = "dashed")) +
+    theme_bw() +
+    labs(
+        title = "Simulated kt by sex and 95% intervals 2022-2072",
+        x = "Year",
+        y = "Kt",
+        color = "Sex",
+        linetype = "Estimate"
+    ) +
+    theme(legend.position = "bottom")
+
 ggsave("graphs/01_simulated_kt.png",plot = plt_sim_kt, width=fig_width, height=fig_height)
 #rio::export(df, "graphs/01_life expted_kt.csv","csv")
 df <- bind_rows(mx_male$mx |> mutate(sex="male"),mx_female$mx |> mutate(sex="female"))

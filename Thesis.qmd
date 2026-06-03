@@ -20,12 +20,152 @@ format:
     toc-depth: 2
     toc-title: "Table of Contents"
     documentclass: report
+    include-in-header:
+      text: |
+        \usepackage{titlesec}
+        \titleformat{\chapter}[block]{\normalfont\huge\bfseries}{\thechapter.}{1em}{}
+        \titlespacing*{\chapter}{0pt}{0pt}{10pt}
 bibliography: references.bib
-csl: https://www.zotero.org/styles/apa
+csl: https://www.zotero.org/styles/apa-single-spaced
 editor: 
   markdown: 
     wrap: 72
 ---
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+make_overflow_kable3 <- function(df,
+                                index_col,
+                                value_cols,
+                                group_col,
+                                group_levels  = NULL,
+                                cols_per_section = 2,
+                                digits        = 3,
+                                caption       = NULL) {
+  library(dplyr)
+  library(knitr)
+  library(kableExtra)
+
+  # ── 0. Validate ────────────────────────────────────────────────────────────
+  stopifnot(
+    is.data.frame(df),
+    index_col  %in% names(df),
+    all(value_cols %in% names(df)),
+    group_col  %in% names(df)
+  )
+
+  # ── 1. Discover / order group levels ───────────────────────────────────────
+  if (is.null(group_levels)) {
+    group_levels <- sort(unique(df[[group_col]]))
+  }
+  n_groups <- length(group_levels)
+
+# ── 2. Pivot: one column-block per group ───────────────────────────────────
+slices <- lapply(group_levels, function(g) {
+  df |>
+    filter(.data[[group_col]] == g) |>
+    select(all_of(c(index_col, value_cols)))
+})
+
+# Join slices one at a time, using the group label as suffix to avoid collisions
+combined <- slices[[1]]
+names(combined) <- c(index_col, paste0(value_cols, "__", group_levels[[1]]))
+
+if (n_groups > 1) {
+  for (i in 2:n_groups) {
+    right <- slices[[i]]
+    names(right) <- c(index_col, paste0(value_cols, "__", group_levels[[i]]))
+    combined <- left_join(combined, right, by = index_col)
+  }
+}
+
+# new_names is now guaranteed to match ncol(combined)
+new_names <- c(index_col,
+               unlist(lapply(group_levels, function(g) paste0(value_cols, "__", g))))
+names(combined) <- new_names
+
+  # ── 3. Split rows into sections ────────────────────────────────────────────
+  n         <- nrow(combined)
+  # How many rows per section
+  rows_per  <- ceiling(n / cols_per_section)
+
+  sections  <- lapply(seq_len(cols_per_section), function(i) {
+    start <- (i - 1) * rows_per + 1
+    end   <- min(i * rows_per, n)
+    if (start > n) {
+      # All-NA padding block
+      pad <- combined[rep(1, rows_per), ]
+      pad[TRUE, ] <- NA
+      return(pad)
+    }
+    slice <- combined[start:end, ]
+    # Pad the last section if it has fewer rows
+    if (nrow(slice) < rows_per) {
+      pad         <- slice[rep(1, rows_per - nrow(slice)), ]
+      pad[TRUE, ] <- NA
+      slice       <- bind_rows(slice, pad)
+    }
+    slice
+  })
+
+  wide <- bind_cols(sections)
+
+  # ── 4. Build display column names ─────────────────────────────────────────
+  # Each section contributes: index_col + one column per value_col per group
+  cols_per_block <- 1 + length(value_cols) * n_groups
+  display_names  <- rep(c(index_col, rep(value_cols, times = n_groups)),
+                        times = cols_per_section)
+  names(wide)    <- display_names
+
+  # ── 5. Build add_header_above vectors ─────────────────────────────────────
+  # Inner header: " " for index | group label spanning value_cols | repeat
+  inner_one  <- c(stats::setNames(1, " "),
+                  stats::setNames(rep(length(value_cols), n_groups), group_levels))
+  inner_header <- rep(inner_one, times = cols_per_section)
+
+  # Outer header (optional section labels): one span per section
+  #section_labels <- paste("Section", seq_len(cols_per_section))
+  #outer_header   <- stats::setNames(rep(cols_per_block, cols_per_section), section_labels)
+
+  # ── 6. Column indices for visual dividers ─────────────────────────────────
+  divider_cols <- if (cols_per_section > 1) {
+    seq(cols_per_block + 1,
+        cols_per_block * (cols_per_section - 1) + 1,
+        by = cols_per_block)
+  } else {
+    integer(0)
+  }
+
+  # ── 7. Render ──────────────────────────────────────────────────────────────
+  align_vec <- rep("c", ncol(wide))
+
+  tbl <- wide |>
+    kbl(
+      booktabs = TRUE,
+      align    = align_vec,
+      linesep  = "",
+      digits   = digits,
+      caption  = caption
+    ) |>
+    kable_styling(latex_options = "hold_position") |>
+    add_header_above(inner_header) #|>
+    #add_header_above(outer_header)
+
+  for (col in divider_cols) {
+    tbl <- tbl |> column_spec(col, border_left = TRUE)
+  }
+
+  tbl
+}
+```
+
+
+# Abstract
+
+Puerto Rico faces acute demographic challenges, including a rapidly aging population, shrinking tax base, and institutional fiscal stress—that demand robust, forward-looking mortality projections. This thesis applies the Lee-Carter model to Puerto Rico's age and sex specific mortality data from 1950 to 2023, decomposing historical death rates into their baseline, sensitivity, and trend components. A bootstrapped simulation framework generates 500 probabilistic mortality trajectories, producing 40-year stochastic forecasts of age-specific death rates and life expectancy at birth with 95% confidence intervals. Results project median life expectancy at birth reaching 82 years for males and 94 years for females by 2062, with male projections broadly consistent with those of the UN World Population Prospects, the U.S. Census Bureau's International Data Base, and the IHME. Female projections, however, exhibit pronounced upward skew that exceeds best-practice benchmarks in the literature, a pattern traced to data irregularities in the 2010–2023 period rather than modeling error. Key structural findings include a plateau in young adult male mortality attributable to excess violence-related deaths and high sensitivity of infant and child mortality to the overall trend index. The wide confidence intervals produced are themselves a substantive finding, signaling that demographic uncertainty in Puerto Rico constitutes a genuine planning risk warranting scenario-based fiscal and healthcare policy rather than single-point forecasts. Future work should implement a hierarchical Bayesian model and investigate the underlying data quality issues driving the female projection skew.
+
 
 # Introduccion
 
@@ -108,7 +248,7 @@ framework lies in its stochastic nature. Unlike deterministic models,
 which offer a "best guess," stochastic models treat future mortality as
 a random process with an associated probability distribution. By
 modeling the time-varying index (kt) as a stochastic time series
-typically a random walk with drift—researchers can generate
+typically a random walk with drift, researchers can generate
 probabilistic intervals for future life expectancy. This quantification
 of uncertainty is indispensable for modern risk management; it allows
 policymakers and actuaries to calculate "longevity risk" and the
@@ -169,6 +309,7 @@ specific mortality forecasting efforts
 #| include: false
 library(tidyverse)
 library(glue)
+library(kableExtra)
 
 bootstrap_residuals_ax <- rio::import('graphs/01_boot_residuals_ax.csv') 
 bootstrap_residuals_bx <- rio::import('graphs/01_boot_residuals_bx.csv')
@@ -192,7 +333,7 @@ projections to assess the solvency of pension systems and social
 security programs.
 
 The model can be described simply with the equation
-$ln(m_{x,t}) = a_x+b_xk_t+e_{x,t}$. More verbose, it states that the
+$$ln(m_{x,t}) = a_x+b_xk_t+e_{x,t}$$ More verbose, it states that the
 natural log of the mortality rates of a given year $ln(m_{x,t})$ are
 equivalent to the baseline mortality $a_x$ plus the product of the age
 specific sensitivity to changes in mortality $b_x$ and the time varying
@@ -208,11 +349,15 @@ they reduce the complexity of the data while retaining the most
 important information. This serves as compression of the data reducing
 the number of parameters needed to model mortality trends but keeping
 the essential features of the data. Following this, the time-varying
-mortality index $K_t$ is modeled as a random walk with drift, allowing
-for the creation of objective prediction intervals that provided a
-quantifiable measure of uncertainty. This was a significant departure
-from previous "best-guess" forecasts, which lacked any formal way to
-assess the range of possible outcomes.
+mortality index $K_t$ is modeled as a random walk with drift. A random
+walk with drift value equals the previous period's value plus a constant
+drift term and a stochastic error component, producing a process that
+exhibits both a deterministic and a stochastic
+trend[@pwasong2015forecasting]. These allow for the creation of
+objective prediction intervals that provided a quantifiable measure of
+uncertainty. This was a significant departure from previous "best-guess"
+forecasts, which lacked any formal way to assess the range of possible
+outcomes.
 
 The simplicity and robustness of the Lee-Carter model allowed it to
 outperform contemporary models[@booth2006demographic], closely tracking
@@ -253,10 +398,10 @@ Now, when talking about the implementation we will be using, Stochastic
 Mortality Modeling (stMoMo) is an R package that provides a
 comprehensive framework for fitting and forecasting mortality models,
 including the Lee-Carter model. Traditionally, mortality projections
-followed deterministic frameworks — producing "high," "medium," and
-"low" scenario variants that, while intuitive, offer no coherent
-probabilistic interpretation and whose resulting ranges for vital rates
-and population measures are inherently inconsistent with one another
+followed deterministic frameworks, producing "high," "medium," and "low"
+scenario variants that, while intuitive, offer no coherent probabilistic
+interpretation and whose resulting ranges for vital rates and population
+measures are inherently inconsistent with one another
 [@lee1994stochastic]. Recognizing these limitations, the field has
 progressively shifted toward stochastic approaches, in which uncertainty
 is explicitly modeled and forecasts are expressed as probability
@@ -267,25 +412,29 @@ toward fully probabilistic ones, reflecting a broader consensus that
 only stochastic methods can fully and coherently quantify forecasting
 uncertainty [@alexander2024developing] The stMoMo package allows users
 to easily fit the Lee-Carter model to their mortality data, generate
-forecasts, and assess uncertainty through confidence intervals. It also
-includes various extensions of the Lee-Carter model, such as the LC-ER
-method, which can be used to improve the accuracy of forecasts for
+forecasts, and assess uncertainty through probabilistic intervals. It
+also includes various extensions of the Lee-Carter model, such as the
+LC-ER method, which can be used to improve the accuracy of forecasts for
 high-life-expectancy countries. The package is designed to be
 user-friendly and flexible, making it accessible for researchers and
 practitioners in the field of mortality forecasting. For our use case,
 we will be using the base Lee-Carter model and using its initial fit to
 bootstrap its parameters to then simulate numerous forecasts to create a
-distribution of possible outcomes. For this we need to set several
-parameter. First would be the link function, which determines the random
-component associated with the mortality model. The default link function
-is the log link, this assumes that the deaths follow a Poisson
-distribution, which is appropriate for count data like mortality.
-Secondly, we need to set the restraints for the model to ensure
-identifiability. For this we will set it as "sum". This ensures that
-$\Sigma_t k_t=0$. With these two we can now create the seed fit for the
-bootstrapping process. The bootstrap itself requires its own set of
-parameters, these being the number of bootstrap samples, the approach to
-be applied and the type of death to resample.
+distribution of possible outcomes. Bootstrapping functions by instead of
+relying on theoretical assumptions about the distribution of the
+parameters, it resamples the data with replacement to create new
+datasets. By fitting the model to these new datasets, we can generate a
+distribution of parameter estimates that reflects the variability in the
+data. To do so, we use the link function to set the random component
+associated to the data. The default link function is the log link, this
+assumes that the deaths follow a Poisson distribution, which is
+appropriate for count data like mortality. Secondly, we need to set the
+restraints for the model to ensure identifiability. For this we will set
+it as "sum". This ensures that $\Sigma_t k_t=0$. With these two we can
+now create the seed fit for the bootstrapping process. The bootstrap
+itself requires its own set of parameters, these being the number of
+bootstrap samples, the approach to be applied and the type of death to
+resample.
 
 # Methodology
 
@@ -316,28 +465,33 @@ needed parameters for this are the number of simulations which we will
 set as the same as the number of bootstraps, the years to project set at
 40. The jump choice, whether to use the fitted end or the actual end, we
 will choose the actual end in the data. Lastly for the simulation is the
-method of the projection of kt. Our alternatives are multivariate random
-walk with drift and an N independent arima models. The result of of this
-is a series of 500 by 500 death rates for each of the 40 years to be
-projected for every age group. We can then select the projections that
-correspond to the median and the 97.5% and 2.5% quantiles to generate
-out confidence intervals for the death rates per age grou, the first of
-our final projects. Following this we can turn these into life tables to
-generate our final product, the life expectancy at birth projections
-with confidence intervals.
+method of the projection of $kt$. Our alternatives are multivariate
+random walk with drift and an N independent arima models. The result of
+this is a series of 500 by 500 death rates for each of the 40 years to
+be projected for every age group. We can then select the projections
+that correspond to the median and the 97.5% and 2.5% quantiles to
+generate out confidence intervals for the death rates per age group, the
+first of our final projects. Following this we can turn these into life
+tables to generate our final product, the life expectancy at birth
+projections with confidence intervals. The notable life table
+assumptions we make are available with the code in github, but the main
+changes are setting the average number of years lived in the first two
+age groups to empirically derived values based on the infant mortality
+rate, rather than assuming deaths are uniformly distributed across the
+interval.
 
 ## The initial fit
 
-### Fitted ax
+### Fitted $ax$
 
 Once the initial model fitting is completed, we have all our initial
-products. The first of these, ax parameter, serves as the baseline
+products. The first of these, $ax$ parameter, serves as the baseline
 mortality for the population. It represents the average log mortality
-rate for each age group across the entire time period. The ax parameter
-captures the general shape of the mortality curve, which typically shows
-high mortality rates at very young ages, a decline in mortality during
-childhood and early adulthood, and then an increase in mortality as
-people age. Ours graphs as follows.
+rate for each age group across the entire time period. The $ax$
+parameter captures the general shape of the mortality curve, which
+typically shows high mortality rates at very young ages, a decline in
+mortality during childhood and early adulthood, and then an increase in
+mortality as people age. Ours graphs as follows.
 
 ![](graphs/01_ax.png){fig-align="center"}
 
@@ -346,15 +500,15 @@ the first year of life. This is followed by the steady increase as one
 ages and the telltale male mortality hump starting at the teen years
 followed by a slow closing of the gap between the sexes as they age.
 
-### Fitted bx
+### Fitted $bx$
 
-Next we have the bx parameter, which is our age specific sensitivity to
-changes in the mortality index kt. The bx parameter captures how much
-the log mortality rate for each age group changes in response to changes
-in the mortality index kt. A higher bx value for a particular age group
-indicates that the mortality rate for that age group is more sensitive
-to changes in the overall mortality trend captured by kt. The bx
-parameter typically shows a pattern where certain age groups, such as
+Next we have the $bx$ parameter, which is our age specific sensitivity
+to changes in the mortality index kt. The $bx$ parameter captures how
+much the log mortality rate for each age group changes in response to
+changes in the mortality index kt. A higher $bx$ value for a particular
+age group indicates that the mortality rate for that age group is more
+sensitive to changes in the overall mortality trend captured by kt. The
+bx parameter typically shows a pattern where certain age groups, such as
 infants and older adults, have higher sensitivity to changes in
 mortality trends, while other age groups, such as young adults, may have
 lower sensitivity. This reflects the fact that improvements in
@@ -414,32 +568,12 @@ the parameters to create new sets of parameters. These new parameters
 come with their own residuals to evaluate which we use to determine the
 number of bootstraps needed to create a robust distribution. Earlier, we
 stated that 500 samples were sufficient and these are the corresponding
-residuals.
+residual graphs and abridged tables of median and quantiles. The
+unabridged ones will be at the end in the Appendix.
 
-### ax residuals
+### $ax$ residuals
 
-![](graphs/01_boot_ax.png){fig-align="center"}
-
-```{r}
-#| echo: false
-#| fig-height: 6
-#| fig-width: 10
-sig_digits=4
-knitr::kable(
-    bootstrap_residuals_ax |> filter(age%%10==0) |> group_by(age, sex) |>
-    mutate(Median = q_0500) |>
-    mutate(Range=glue("({round(q_0025,sig_digits)} - {round(q_0975,sig_digits)})")) |>
-    mutate(Range_Delta = q_0975-q_0025) |>
-    select(c(age,sex,Median, Range,Range_Delta)) |> pivot_wider(names_from = sex, values_from = c(Median, Range,Range_Delta)) |> select(c(age, Median_male, Range_male, Range_Delta_male, Median_female, Range_female,Range_Delta_female)) |> 
-    rename("Age"="age",
-           "Median Male"="Median_male", "Range Male"= "Range_male", "Range Difference Male"="Range_Delta_male",           
-           "Median Female"="Median_female", "Range Female"= "Range_female", "Range Difference Female"="Range_Delta_female")|>
-        mutate(`Range Ratio` = round(`Range Difference Female` / `Range Difference Male`, 3))
-    , align = "lccccccc", digits = sig_digits,caption = "Bootstrap residuals for ax")
-
-```
-
-Here we have the ax residuals of the bootstrap. It presents a large
+Below we have the $ax$ residuals of the bootstrap. It presents a large
 deviance spike around childhood. For males this tapers quickly when
 entering the teen years and continues to narrow through adulthood and
 the senior years. Women on the other hand present a slower narrowing
@@ -448,10 +582,53 @@ the quantiles, at the median there's a clear skew towards opposite sides
 of zero between the sexes and the range between the 95% quantiles
 between men and woman are withing 20% of each other. In short both share
 the same general shape of uncertainty with the males having a slight
-offset towards the negative. This finally leads to males having a lower
-baseline level of log mortality than females
+offset towards the negative.
 
-### bx residuals
+![](graphs/01_boot_ax.png){fig-align="center"}
+\newpage
+
+```{r}
+#| echo: false
+#| fig-height: 6
+#| fig-width: 10
+sig_digits=6
+x <- 20  # your threshold
+
+df_wide <- bootstrap_residuals_ax |> filter(age%%10==0) |> group_by(age, sex) |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(q_0025, q_0500, q_0975)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(q_0500_male, sig_digits),   " (", round(q_0025_male, sig_digits),   ", ", round(q_0975_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(q_0500_female, sig_digits),   " (", round(q_0025_female, sig_digits),   ", ", round(q_0975_female, sig_digits),   ")")
+  ) |>
+  select(age, male_fmt, female_fmt)
+df_wide |>
+knitr::kable(
+
+col.names = c("Age", "Median (2.5%, 97.5%)", "Median (2.5%, 97.5%)"),
+    align = "c",
+    booktabs = TRUE
+, digits = sig_digits,caption = "Bootstrap residuals for ax")|>
+  kable_styling(full_width = FALSE) |>
+  add_header_above(c(" " = 1, "Male" = 1, "Female" = 1))|>
+    kableExtra::kable_styling(font_size = 8)
+
+```
+
+### $bx$ residuals
+
+Moving on to the $bx$ parameters bootstrap residuals, in many ways it
+mirrors the ones from the $ax$ parameter just an order of magnitude
+lower, with a large deviance spike around childhood that tapers off as
+age progresses. However, unlike the ax residuials, we see a clear
+difference in the range of the residuals between sexes. For males, the
+residuals are much more spread out than the female counterpart, with the
+95% range generally being wider for men more often than in the $ax$
+residuals and by a larger margin. This leads us to derive that the male
+sensitivity to changes in the mortality index is much more volatile than
+the female sensitivity.
 
 ![](graphs/01_boot_bx.png){fig-align="center"}
 
@@ -459,33 +636,40 @@ baseline level of log mortality than females
 #| echo: false
 #| fig-height: 6
 #| fig-width: 10
-sig_digits=4
-knitr::kable(
-    bootstrap_residuals_bx |> filter(age%%10==0) |> group_by(age, sex) |>
-    mutate(Median = q_0500) |>
-    mutate(Range=glue("({round(q_0025,sig_digits)} - {round(q_0975,sig_digits)})")) |>
-    mutate(Range_Delta = q_0975-q_0025) |>
-    select(c(age,sex,Median, Range,Range_Delta)) |>
-    pivot_wider(names_from = sex, values_from = c(Median, Range,Range_Delta)) |>
-    select(c(age, Median_male, Range_male, Range_Delta_male, Median_female, Range_female,Range_Delta_female)) |> 
-    rename("Age"="age",
-           "Median Male"="Median_male", "Range Male"= "Range_male", "Range Difference Male"="Range_Delta_male",           
-           "Median Female"="Median_female", "Range Female"= "Range_female", "Range Difference Female"="Range_Delta_female")|>
-        mutate(`Range Ratio` = round(`Range Difference Female` / `Range Difference Male`, 3))
-    , align = "lccccccc", digits = sig_digits,caption = "Bootstrap residuals for bx")
+sig_digits=6
+x <- 20  # your threshold
 
+df_wide <-     bootstrap_residuals_bx |> filter(age%%10==0) |> group_by(age, sex) |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(q_0025, q_0500, q_0975)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(q_0500_male, sig_digits),   " (", round(q_0025_male, sig_digits),   ", ", round(q_0975_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(q_0500_female, sig_digits),   " (", round(q_0025_female, sig_digits),   ", ", round(q_0975_female, sig_digits),   ")")
+  ) |>
+  select(age, male_fmt, female_fmt)
+df_wide |>
+knitr::kable(
+
+col.names = c("Age", "Median (2.5%, 97.5%)", "Median (2.5%, 97.5%)"),
+    align = "c",
+    booktabs = TRUE
+, digits = sig_digits,caption = "Bootstrap residuals for bx")|>
+  kable_styling(full_width = FALSE) |>
+  add_header_above(c(" " = 1, "Male" = 1, "Female" = 1))#|>
+    #kableExtra::kable_styling(font_size = 8)
 ```
 
-Moving on to the bx parameters bootstrap residuals, in many ways it
-mirrors the ones from the ax parameter, with a large deviance spike
-around childhood that tapers off as age progresses. However, unlike the
-ax residuials, we see a clear difference in the range of the residuals
-between sexes. For males, the residuals are much more spread out than
-the female counterpart, with the 95% range ratio being ranging between
-0.50 and 0.94, meaning that the male sensitivity to changes in the
-mortality index is much more volatile than the female sensitivity.
+### $kt$ residuals
 
-### kt residuals
+Moving on to the residuals for the kt variable, we see that unlike both
+other parameters, kt slowly fans out over time. The range is much larger
+than the other two parameters, which is expected as the kt variable is
+the one that is projected forward in time and thus has more uncertainty
+associated with it. The medians trend upwards over time and the range
+spread is similar on both sexes. Generalizing, there is a clear increase
+in uncertainty as time progresses.
 
 ![](graphs/01_boot_kt.png){fig-align="center"}
 
@@ -493,28 +677,35 @@ mortality index is much more volatile than the female sensitivity.
 #| echo: false
 #| fig-height: 6
 #| fig-width: 10
-sig_digits=4
-knitr::kable(
-    bootstrap_residuals_kt |> filter(year%%10==0) |> group_by(year, sex) |>
-    mutate(Median = q_0500) |>
-    mutate(Range=glue("({round(q_0025,sig_digits)} - {round(q_0975,sig_digits)})")) |>
-    mutate(Range_Delta = q_0975-q_0025) |>
-    select(c(year,sex,Median, Range,Range_Delta)) |>
-    pivot_wider(names_from = sex, values_from = c(Median, Range,Range_Delta)) |>
-    select(c(year, Median_male, Range_male, Range_Delta_male, Median_female, Range_female,Range_Delta_female)) |> 
-    rename("Year"="year",
-           "Median Male"="Median_male", "Range Male"= "Range_male", "Range Difference Male"="Range_Delta_male",           
-           "Median Female"="Median_female", "Range Female"= "Range_female", "Range Difference Female"="Range_Delta_female")|>
-        mutate(`Range Ratio` = round(`Range Difference Female` / `Range Difference Male`, 3))
-    , align = "lccccccc", digits = sig_digits,caption = "Bootstrap residuals for kt")
-```
 
-Moving on to the residuals for the kt variable, we see that unlike both
-other parameters, kt slowly fans out over time. We also see the medians
-are likewise, slowly climbing as time progresses unlike the two other
-parameters and this is consistent for both sexes. Meanwhile the range
-ratio between the sexes is shifting first skewed towards females but now
-centers around 0.92.
+
+    
+    
+  sig_digits=6
+x <- 20  # your threshold
+
+df_wide <-     bootstrap_residuals_kt |> filter(year%%10==0) |> group_by(year, sex) |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(q_0025, q_0500, q_0975)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(q_0500_male, sig_digits),   " (", round(q_0025_male, sig_digits),   ", ", round(q_0975_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(q_0500_female, sig_digits),   " (", round(q_0025_female, sig_digits),   ", ", round(q_0975_female, sig_digits),   ")")
+  ) |>
+  select(year, male_fmt, female_fmt)
+df_wide |>
+knitr::kable(
+
+col.names = c("Year", "Median (2.5%, 97.5%)", "Median (2.5%, 97.5%)"),
+    align = "c",
+    booktabs = TRUE
+, digits = sig_digits,caption = "Bootstrap residuals for kt")|>
+  kable_styling(full_width = FALSE) |>
+  add_header_above(c(" " = 1, "Male" = 1, "Female" = 1))#|>
+    #kableExtra::kable_styling(font_size = 8)  
+    
+```
 
 ## The forecast
 
@@ -533,7 +724,15 @@ projection for kt, either multivariate random walk with drift or iarima
 models, the vast majority of literature uses the random walk and we have
 no reason to deviate from this [@girosi2007understanding].
 
-### Simulated kt
+### Simulated $kt$
+
+Now, looking at the projections for the kt variable, we see that both
+medians fall at a steady rate over time. As expected of the random walk
+both ranges spread out over time with them both presenting a 10 point
+differential in at the first projection point finally growing to a 30
+point differential by the end of the projection period. Of note is the
+skew that the median projections have towards the lower bound indicating
+a more optimistic projection for the future mortality trends.
 
 ![](graphs/01_simulated_kt.png){fig-align="center"}
 
@@ -541,28 +740,31 @@ no reason to deviate from this [@girosi2007understanding].
 #| echo: false
 #| fig-height: 6
 #| fig-width: 10
-sig_digits=4
-knitr::kable(
-    simulated_kt |> filter(year%%10==0) |> group_by(year, sex) |>
-    mutate(Median = q_0500) |>
-    mutate(Range=glue("({round(q_0025,sig_digits)} - {round(q_0975,sig_digits)})")) |>
-    mutate(Range_Delta = q_0975-q_0025) |>
-    select(c(year,sex,Median, Range,Range_Delta)) |>
-    pivot_wider(names_from = sex, values_from = c(Median, Range,Range_Delta)) |>
-    select(c(year, Median_male, Range_male, Range_Delta_male, Median_female, Range_female,Range_Delta_female)) |> 
-    rename("Year"="year",
-           "Median Male"="Median_male", "Range Male"= "Range_male", "Range Difference Male"="Range_Delta_male",           
-           "Median Female"="Median_female", "Range Female"= "Range_female", "Range Difference Female"="Range_Delta_female")|>
-        mutate(`Range Ratio` = round(`Range Difference Female` / `Range Difference Male`, 3))
-    , align = "lccccccc", digits = sig_digits,caption = "Kt simulations 2022-2050.")
-```
 
-Now, looking at the projections for the kt variable, we see that both
-medians fall at a steady rate over time. As expected of the random walk
-both ranges spread out over time, but the range ratio is steady between
-sexes and roughly 1.1. Something of note is the behavior of the
-projected median. It almost falls to the lower bound for both sexes,
-which is a sign of a skewed distribution.
+
+sig_digits=6
+x <- 20  # your threshold
+
+df_wide <-     simulated_kt |> filter(year%%5==0) |> group_by(year, sex) |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(q_0025, q_0500, q_0975)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(q_0500_male, sig_digits),   " (", round(q_0025_male, sig_digits),   ", ", round(q_0975_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(q_0500_female, sig_digits),   " (", round(q_0025_female, sig_digits),   ", ", round(q_0975_female, sig_digits),   ")")
+  ) |>
+  select(year, male_fmt, female_fmt)
+df_wide |>
+knitr::kable(
+
+col.names = c("Year", "Median (2.5%, 97.5%)", "Median (2.5%, 97.5%)"),
+    align = "c",
+    booktabs = TRUE
+, digits = sig_digits,caption = "kt simulations 2022-2050.")|>
+  kable_styling(full_width = FALSE) |>
+  add_header_above(c(" " = 1, "Male" = 1, "Female" = 1))
+```
 
 # Results
 
@@ -570,8 +772,8 @@ which is a sign of a skewed distribution.
 
 Now, with the kt projections, we can now calculate the first of our two
 final products, the projected mortality rates for each age and sex by
-using the ax and bx parameters. The projected mortality rates can be
-calculated using the formula: $log(mortality_rate) = ax + bx * kt$. This
+using the $ax$ and $bx$ parameters. The projected mortality rates can be
+calculated using the formula: $log(mortality rate) = ax + bx * kt$. This
 allows us to create a distribution of possible future mortality rates
 based on the uncertainty in the parameters and the projections of kt.
 The projected mortality rates can be used to create confidence intervals
@@ -579,16 +781,21 @@ for the future mortality rates.
 
 ```{r}
 #| echo: false
+#| message: false
+#| warning: false
 #| fig-height: 6
 #| fig-width: 10
 sig_digits=4
-knitr::kable(
-    deathrates |> filter(year%%25==0) |> filter(age %in% c(20,40,60))|> filter( year >1999) |>
+deathrates |> filter(year%%25==0) |> filter(age %in% c(20,40,60))|> filter( year >1999) |>
         arrange(sex,age,year) |>
         mutate(central = log(central)) |>
         mutate(upper = log(upper)) |>
-        mutate(lower = log(lower))
-    , align = "lccccccc", digits = sig_digits,caption = "Death Rates Historic and Forecasted 2020-2050.")
+        mutate(lower = log(lower)) |> arrange(sex,age,year, type) |>
+        mutate(`death rate` = glue("{round(central, sig_digits)} ({round(lower, sig_digits)}, {round(upper, sig_digits)})")) |> arrange(year, age, sex) |> select(year, age, "death rate", sex) |> pivot_wider(names_from =sex, values_from = `death rate`) |> select(year, age, male, female) |> knitr::kable(
+    col.names = c("Year", "Age", "Male Log Death Rate (95% CI)", "Female Log Death Rate (95% CI)"),
+    align = "c",
+    booktabs = TRUE, caption = "Projected log mortality rates for selected ages and years.")|> kable_styling(full_width = FALSE) |> kableExtra::kable_styling(font_size = 8)
+    
 ```
 
 ```{r}
@@ -596,7 +803,7 @@ knitr::kable(
 #| fig-height: 6
 #| fig-width: 10
 
-deathrates|>
+g <- deathrates|>
 
         mutate(age_group = if_else( age<20, "Children",if_else(age>60, "Elderly","Adults"))
                ) |>
@@ -611,7 +818,12 @@ deathrates|>
          y = "Log Mortality Rate") +
     theme_bw() +
     theme(legend.text = element_text(), legend.position = "bottom")
-#
+
+fig_width <- 8
+fig_height <- 4
+ggsave("graphs/projected_log_mortality.png",plot = g, width=fig_width, height=fig_height)
+
+g
 #
 ```
 
@@ -626,14 +838,14 @@ Those that survive to late adulthood are projected to continue their
 decline in mortality but at a much slower pace than that of women.
 Finally for both senior groups we see a continued decline in mortality
 with women projected to have a much faster decline. One of the more
-important things to note is that the original bx parameter describes
+important things to note is that the original $bx$ parameter describes
 much of this graph. The high sensitivity of the minors to changes in the
 mortality index kt means that they are projected to have a much faster
 decline in mortality than the other age groups. The low sensitivity of
 the young adults means that their mortality is projected to plateau,
 while the moderate sensitivity of the adults and seniors means that they
 are projected to have a continued decline in mortality but at a slower
-pace than minors. Meanwhile the ax parameter is overwritten by our
+pace than minors. Meanwhile the $ax$ parameter is overwritten by our
 explicitly requirement to force the projections to start at the actual
 end of the data, so it does not have a direct effect on the projections
 but it does have an indirect effect by influencing the initial fit of
@@ -641,8 +853,14 @@ the model and therefore the parameters that are used in the simulations.
 
 ## Life Tables and Life expectancy at birth
 
-Now for the second final product. Proper life tables for both sexes and
-the life expectancy at birth projected through the entire period.
+Now for the second final product. We produced life tables for each of
+the projected mortality rates, which allows us to calculate life
+expectancy at birth for each of the projections. This gives us a
+distribution of possible future life expectancy at birth values based on
+the uncertainty in the parameters and the projections of kt. The
+following abridged life tables refer to the last year of the median
+projection and the following graph shows the life expectancy at birth
+projections with confidence intervals.
 
 ```{r}
 #| echo: false
@@ -650,59 +868,75 @@ the life expectancy at birth projected through the entire period.
 #| fig-width: 10
 sig_digits=4
 knitr::kable(
-    lifetables |> filter(year%%10==0) |> filter(year>1999) |> filter( age ==0) |>
-        arrange(sex,year,age, type) |> filter(type %in% c("historic","central"))
-
-    , align = "llcccccc", digits = sig_digits,caption = "Life Tables historic and Median Projection 2000-2060.")
+    lifetables |> filter(year==max(year))|> filter(age %in% c(0,20,40,60,80)) |> filter(sex=="male") |> filter(type=="central") |>
+        arrange(age) |> select(age, ex, qx, lx, dx, Lx, Tx,ex) |> rename("Age"=age) |> mutate(ex = as.integer(ex), Lx = as.integer(Lx), Tx=as.integer(Tx)) |> arrange(Age),
+    digits = sig_digits,caption = "Life Table Male 2061."
+    )|>
+    kableExtra::kable_styling(font_size = 10)
 ```
 
 ```{r}
 #| echo: false
 #| fig-height: 6
 #| fig-width: 10
-ggplot() +
-    geom_line(data=lifetables |> filter(type=="historic") |> filter(age==0),
-              aes(x=year, y=ex, color="Historic Life Expectancy", group=sex, linetype = "solid" ))  +
-    geom_line(data=lifetables |> filter(type=="upper")    |> filter(age==0),
-              aes(x=year, y=ex, color="95% Interval",             group=sex, linetype = "dashed")) +
-    geom_line(data=lifetables |> filter(type=="lower")    |> filter(age==0),
-              aes(x=year, y=ex, color="95% Interval",             group=sex, linetype = "dashed")) +
-    geom_line(data=lifetables |> filter(type=="central")  |> filter(age==0),
-              aes(x=year, y=ex, color="Mean Forcast",             group=sex, linetype = "longdash" )) +
+sig_digits=4
+knitr::kable(
+    lifetables |> filter(year==max(year))|> filter(age %in% c(0,20,40,60,80)) |> filter(sex=="female") |> filter(type=="central") |>
+        arrange(age) |> select(age, ex, qx, lx, dx, Lx, Tx,ex) |> rename("Age"=age) |> mutate(ex = as.integer(ex), Lx = as.integer(Lx), Tx=as.integer(Tx)) |> arrange(Age),
+    digits = sig_digits,caption = "Life Table Female 2061."
+    )|>
+    kableExtra::kable_styling(font_size = 10)
+```
+
+```{r}
+#| echo: false
+#| fig-height: 6
+#| fig-width: 10
+g<-ggplot() +
+    geom_line(data=lifetables |> filter(type=="historic") |> filter(age==0), aes(x=year, y=ex, color="Historic", group=sex, linetype = "Historic" ))  +
+    geom_line(data=lifetables |> filter(type=="upper")    |> filter(age==0), aes(x=year, y=ex, color="Forcast",  group=sex, linetype = "95%")) +
+    geom_line(data=lifetables |> filter(type=="lower")    |> filter(age==0), aes(x=year, y=ex, color="Forcast",  group=sex, linetype = "95%")) +
+    geom_line(data=lifetables |> filter(type=="central")  |> filter(age==0), aes(x=year, y=ex, color="Forcast",  group=sex, linetype = "Median" )) +
     facet_wrap(~sex) +
-    scale_linetype_identity() +
-    labs(title = "Projected Life Expectancy at Birth with 95% Confidence Intervals",
+    scale_linetype_manual(values = c("Median" = "solid", "95%" = "dashed", "Historic"="solid")) +
+
+    labs(title = "Projected Life Expectancy at Birth",
          x = "Year",
          y = "Life Expectancy at Birth (years)",
-         color = "Projection Type") +
-    scale_color_manual(values = c("Historic Life Expectancy" = "black","95% Interval"="blue","Mean Forcast"="red"))+
-    theme_bw() 
+         color = "Projection Type",
+         linetype = "Quantile"
+         ) +
+    scale_color_manual(values = c("Historic" = "black","Forcast"="blue"))+
+    theme_bw()  +
+    theme(legend.position = "bottom")
+ggsave("graphs/projected_life_expectancy.png",plot = g, width=fig_width, height=fig_height)
+g
 
 ```
 
 Seeing the life expectancy at birth projections, we see that the
-historic data shows a steady increase in life expectancy. The projected
-values show this trend with a continued increase in life expectancy of
-about 2.3 years per decade for women and 1.6 years per decade for men.
-The median of the projection reaches 94 years for women and 82 for men.
-The confidence intervals on the other hand present a curious picture.
-The projection intervals are large enough to warrant a closer look, in
-particular, the upper bound of the female life expectancy projection
-presents linear growth and is projected to reach 104 years by 2060 and
-male life expectancy reaches 92 year. The lower bound for both seem much
-more plausible, with the female projection reaching 89 years and the
-male 76.
+historic data shows a steady increase in life expectancy for both sexes
+and a dip around the 1990s for men. The projected values follow thes
+trend with a continued increase in life expectancy of about 2.3 years
+per decade for women and 1.6 years per decade for men. The median of the
+projection reaches 94 years for women and 82 for men. The confidence
+intervals on the other hand present a curious picture. The projection
+intervals are large enough to warrant a closer look, in particular, the
+upper bound of the female life expectancy projection presents linear
+growth and is projected to reach 104 years by 2060 and male life
+expectancy reaches 92 year. The lower bound for both seem much more
+plausible, with the female projection reaching 89 years and the male 76.
 
 # Discussion
 
 ## Our benchmarks
 
-Whe have already stated that there are no modern projections of
-mortality and life expectancy projections that are specific to Puerto
-Rico, so we will be comparing our results to three entities that do
-produce projections for the entire world, including Puerto Rico: the UN
-World Population Prospects (WPP), the U.S. Census Bureau’s International
-Data Base (IDB), and the University of Washington's Institute for Health
+We have already stated that there are no modern projections of mortality
+and life expectancy projections that are specific to Puerto Rico, so we
+will be comparing our results to three entities that do produce
+projections for the entire world, including Puerto Rico: the UN World
+Population Prospects (WPP), the U.S. Census Bureau’s International Data
+Base (IDB), and the University of Washington's Institute for Health
 Metrics and Evaluation (IHME). Each of these entities uses different
 methodologies and assumptions, so comparing our results to theirs will
 provide a useful context for understanding the implications of our
@@ -734,7 +968,7 @@ For countries with limited data, model life tables are used to estimate
 age and sex-specific mortality patterns. The IDB extends mortality
 projections to age 100+ using logistic functions to ensure smooth,
 realistic trends, even in the absence of empirical data. For countries
-affected by HIV/AIDS, the IDB employs a dual-scenario approach—modeling
+affected by HIV/AIDS, the IDB employs a dual-scenario approach, modeling
 mortality under both “with AIDS” and “without AIDS” conditions using
 data from the UNAIDS Spectrum software to incorporate HIV prevalence and
 epidemic dynamics. Projections for future mortality are based on
@@ -826,7 +1060,7 @@ The upperbound for our projections reaches 103 years while the WPP
 reaches 94 years. and the lower bound of our projections reaches 87
 years while the WPP reaches 84 years.
 
-Oeppen and Vaubel stated in may 2002 that "best-practice life expectancy
+Oeppen and Vaubel stated in May 2002 that "best-practice life expectancy
 gains" have been about 2.5 years per decade[@oeppen2002broken],
 meanwhile Ronald Lee states its likely closer to 2.0 years per decade
 [@lee2002demographic]. If we graph those limits, we can see that our
@@ -851,8 +1085,8 @@ parameters are reasonable and the historical $k_t$ index does not show
 any unusual patterns that would suggest a structural break. Following
 those checks weve double checked the code, both verifying the
 implementation of the Lee-Carter model and the random walk with drift
-projection of $k_t$, we've iterated through all the parameters to see if
-any of them could be driving the skew. in fact, the the parameters
+projection of $k_t$, we have iterated through all the parameters to see
+if any of them could be driving the skew. In fact, the the parameters
 themselves do little to change the structural shape of the projections,
 with both the median and the upperbound of female mortality showing
 unrealistic improvements in life expectancy at birth, while the lower
@@ -905,7 +1139,7 @@ by a wide range of factors that are difficult to predict. This has
 important implications for policymakers and planners, who need to be
 prepared for a range of possible scenarios when it comes to healthcare
 and social services for the aging population in Puerto Rico. The wide
-confidence intervals themselves are a finding — they communicate to
+confidence intervals themselves are a finding, they communicate to
 policymakers that demographic uncertainty in Puerto Rico is not merely a
 modeling limitation but a genuine planning risk that demands
 scenario-based fiscal and healthcare planning rather than single-point
@@ -935,7 +1169,6 @@ artifact but rather a reflection of the data and the events that have
 shaped mortality in Puerto Rico in recent years.
 
 # Recomendations
-
 The underlying model we used, the Lee-Carter model, is a widely used and
 well-established model for projecting mortality and life expectancy.
 Having said that, its clear that the model has limitations, particularly
@@ -957,8 +1190,8 @@ results to policymakers and stakeholders.
 
 # Future work
 
-The next step in this project is to implement the hierarchical Bayesian
-model developed by the United Nations World Population Prospects
+The next step in this project is to implement the Hierarchical Bayesian
+Model developed by the United Nations World Population Prospects
 [@raftery2013bayesian] and compare its projections to those generated by
 the Lee-Carter model. Additionally, the source of the skew in the
 projections needs to be further investigated, particularly in relation
@@ -983,570 +1216,82 @@ model until we are able to implement it.
 ::: {#refs}
 :::
 
+\newpage
+
 # Apendix
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-year_filter <- c(1950,2000,2010,2020,2022,2030,2050,2062)
-age_filter <- c(0,20,40,60,80)
 
-#age_filter <- seq(0,100, by=20)
-#year_filter <- seq(1950,2062, by=10) 
-```
 ## Tables
-
-#### Summary of Death Rates
-
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
-sig_digits=4
-rates <- rio::import("graphs/01_rates.csv")
-tmp <- rates |>  filter( type == "historic" ) |> select(c(year,age,central,sex))|> rename("death rate"=central) |> pivot_wider(names_from =sex, values_from = "death rate")|> arrange(year,age) |> filter(year %in% year_filter) |> filter(age %in% age_filter)
-n_cols <- 2
-n   <- nrow(tmp)
-idx <- floor(n / n_cols)
-
-col1 <- tmp[1:idx, ]
-col2 <- tmp[(idx + 1):(2 * idx),]
-
-rownames(col1) <- rownames(col2) <- NULL
-
-library(kableExtra)
-
-knitr::kable(
-  cbind(col1, col2),
-  col.names = c(rep(colnames(tmp), n_cols)),
-      na        = "",
-  caption = "Death Rates Puerto Rico Historic: 1950-2021.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-) |>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  ) |>
-  collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  ) |> 
-    kable_styling(font_size = 10)
-
-
-
-```
-\newpage
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-sig_digits=4
-rates <- rio::import("graphs/01_rates.csv")
-tmp <- rates |>  filter( type == "forecast" ) |> select(c(year,age,central,sex))|> rename("death rate"=central) |> pivot_wider(names_from =sex, values_from = "death rate")|> arrange(year,age) |> filter(year %in% year_filter) |> filter(age %in% age_filter)
-n_cols <- 2
-n   <- nrow(tmp)
-idx <- ceiling(n / n_cols)
-
-col1 <- tmp[1:idx, ]
-col2 <- tmp[(idx + 1):(2 * idx),]
-
-rownames(col1) <- rownames(col2) <- NULL
-
-library(kableExtra)
-
-knitr::kable(
-  cbind(col1, col2),
-  col.names = c(rep(colnames(tmp), n_cols)),
-      na        = "",
-  caption = "Death Rates Puerto Rico Projections:Median 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-) |>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  ) |>  collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-
-```
-
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-sig_digits=4
-rates <- rio::import("graphs/01_rates.csv")
-tmp <- rates |>  filter( type == "forecast" ) |> select(c(year,age,upper,sex))|> rename("death rate"=upper) |> pivot_wider(names_from =sex, values_from = "death rate")|> arrange(year,age) |> filter(year %in% year_filter) |> filter(age %in% age_filter)
-n_cols <- 2
-n   <- nrow(tmp)
-idx <- ceiling(n / n_cols)
-
-col1 <- tmp[1:idx, ]
-col2 <- tmp[(idx + 1):(2 * idx),]
-
-rownames(col1) <- rownames(col2) <- NULL
-
-library(kableExtra)
-
-knitr::kable(
-  cbind(col1, col2),
-  col.names = c(rep(colnames(tmp), n_cols)),
-      na        = "",
-  caption = "Death Rates Puerto Rico Projections:97.5 Percentile 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-) |>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  ) |>
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-
-```
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-sig_digits=4
-rates <- rio::import("graphs/01_rates.csv")
-tmp <- rates |>  filter( type == "forecast" ) |> select(c(year,age,lower,sex))|> rename("death rate"=lower) |> pivot_wider(names_from =sex, values_from = "death rate")|> arrange(year,age) |> filter(year %in% year_filter) |> filter(age %in% age_filter)
-n_cols <- 2
-n   <- nrow(tmp)
-idx <- ceiling(n / n_cols)
-
-col1 <- tmp[1:idx, ]
-col2 <- tmp[(idx + 1):(2 * idx),]
-
-rownames(col1) <- rownames(col2) <- NULL
-
-library(kableExtra)
-
-knitr::kable(
-  cbind(col1, col2),
-  col.names = c(rep(colnames(tmp), n_cols)),
-      na        = "",
-  caption = "Death Rates Puerto Rico Projections:2.5 Percentile 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-) |>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  ) |>
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-
-```
-\newpage
-
-#### Summary of Lifetables
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-sig_digits=4
-lt <- rio::import("graphs/01_lifetables.csv")
-male   <- lt |>  filter( type == "historic" ) |> filter(year %in% year_filter) |> filter(age %in% age_filter) |> filter(sex=="male")  |> select(-c(type, sex))
-female <- lt |>  filter( type == "historic" ) |> filter(year %in% year_filter) |> filter(age %in% age_filter) |> filter(sex=="female")|> select(-c(type, sex))
-```
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-knitr::kable(
-  male,
-  col.names = colnames(male),
-      na        = "",
-  caption = "Life Table Male Historic 1950-2021.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|>  
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-```
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-
-knitr::kable(
-  female,
-  col.names = colnames(female),
-      na        = "",
-  caption = "Life Table Female Historic 1950-2021.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|>  
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-
-```
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-
-sig_digits=4
-lt <- rio::import("graphs/01_lifetables.csv")
-male   <- lt |>  filter( type == "central" ) |> filter(year %in% year_filter) |> filter(age %in% age_filter) |> filter(sex=="male")  |> select(-c(type, sex))
-female <- lt |>  filter( type == "central" ) |> filter(year %in% year_filter) |> filter(age %in% age_filter) |> filter(sex=="female")|> select(-c(type, sex))
-
-```
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-
-
-knitr::kable(
-  male,
-  col.names = colnames(male),
-      na        = "",
-  caption = "Lifetable Male Projected Median 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|>  
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-```
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-
-knitr::kable(
-  female,
-  col.names = colnames(female),
-      na        = "",
-  caption = "Lifetable Female Projected Median 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|>  
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-
-```
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-
-
-sig_digits=4
-lt <- rio::import("graphs/01_lifetables.csv")
-male   <- lt |>  filter( type == "upper" ) |> filter(year %in% year_filter) |> filter(age %in% age_filter) |> filter(sex=="male")  |> select(-c(type, sex))
-female <- lt |>  filter( type == "upper" ) |> filter(year %in% year_filter) |> filter(age %in% age_filter) |> filter(sex=="female")|> select(-c(type, sex))
-```
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-
-knitr::kable(
-  male,
-  col.names = colnames(male),
-      na        = "",
-  caption = "Lifetable Male Projected 97.5 Percentile 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|>  
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-```
-\newpage
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-
-knitr::kable(
-  female,
-  col.names = colnames(female),
-      na        = "",
-  caption = "Lifetable Female Projected 97.5 Percentile 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|>  
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-```
-\newpage
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-sig_digits=4
-lt <- rio::import("graphs/01_lifetables.csv")
-male   <- lt |>  filter( type == "lower" ) |> filter(year %in% year_filter) |> filter(age %in% age_filter) |> filter(sex=="male")  |> select(-c(type, sex))
-female <- lt |>  filter( type == "lower" ) |> filter(year %in% year_filter) |> filter(age %in% age_filter) |> filter(sex=="female")|> select(-c(type, sex))
-```
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-knitr::kable(
-  male,
-  col.names = colnames(male),
-      na        = "",
-  caption = "Lifetable Male Projected 2.5 Percentile 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|>  
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-
-```
-\newpage
-
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-knitr::kable(
-  female,
-  col.names = colnames(female),
-      na        = "",
-  caption = "Lifetable Female Projected 2.5 Percentile 2022-2062.",
-  align = paste(rep("llcc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|>  
-    collapse_rows(
-    columns  = c(1,5),          # which column(s) to collapse
-    valign   = "middle"    # vertical alignment: "top", "middle", "bottom"
-  )|> 
-    kable_styling(font_size = 10)
-
-```
-\newpage
-
-### Life Expectancy at Birth
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-sig_digits=4
-lt <- rio::import("graphs/01_lifetables.csv")
-tmp   <- lt |>  filter( type == "historic" ) |> filter(age ==0)  |> select(c(year,ex,sex)) |> pivot_wider(names_from =sex, values_from = ex) |> arrange(year)
-
-n_cols <- 3
-n   <- nrow(tmp)
-idx <- ceiling(n / n_cols)
-
-col1 <- tmp[1:idx, ]
-col2 <- tmp[(idx + 1):(2 * idx),]
-col3 <- tmp[(2 * idx + 1):n, ]
-tmp <- cbind(col1, col2, col3)
-colnames(tmp) <- c(colnames(col1), colnames(col2), colnames(col3))
-
-
-knitr::kable(
-    tmp,
-
-  col.names = colnames(tmp),
-      na        = "",
-  caption = "Life Expectancy at Birth Historic 1950-2021.",
-  align = paste(rep("ccc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|> 
-    kable_styling(font_size = 10)
-
-```
-
-\newpage
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-sig_digits=4
-lt <- rio::import("graphs/01_lifetables.csv")
-tmp   <- lt |>  filter( type == "central" ) |> filter(age ==0)  |> select(c(year,ex,sex)) |> pivot_wider(names_from =sex, values_from = ex) |> arrange(year)
-
-n_cols <- 3
-n   <- nrow(tmp)
-idx <- ceiling(n / n_cols)
-
-col1 <- tmp[1:idx, ]
-col2 <- tmp[(idx + 1):(2 * idx),]
-col3 <- tmp[(2 * idx + 1):n, ]
-
-pad_df <- function(df, n) {
-  if (nrow(df) < n) {
-    extra <- n - nrow(df)
-    df <- bind_rows(df, as.data.frame(matrix(NA, extra, ncol(df), 
-                                              dimnames = list(NULL, names(df)))))
+make_kable <- function(df, cols_per_section = 1) {
+  # df must have columns: age, ax, bx, sex
+  # cols_per_section: how many age-group sections to display side-by-side
+  
+  library(dplyr)
+  library(knitr)
+  library(kableExtra)
+  
+  # Split by sex
+  male   <- df |> filter(sex == "male")   |> select(age, ax, bx)
+  female <- df |> filter(sex == "female") |> select(age, ax, bx)
+  
+  # Join on age so rows align
+  combined <- left_join(male, female, by = "age", suffix = c("_m", "_f")) |>
+    rename(ax_m = ax_m, bx_m = bx_m, ax_f = ax_f, bx_f = bx_f)
+  
+  n      <- nrow(combined)
+  half   <- ceiling(n / 2)
+  
+  # Split into two halves to place side-by-side
+  left_half  <- combined[1:half, ]
+  right_half <- combined[(half + 1):n, ]
+  
+  # Pad right half if odd number of rows
+  if (nrow(right_half) < nrow(left_half)) {
+    pad <- left_half[1, ] |> mutate(across(everything(), ~NA))
+    right_half <- bind_rows(right_half, pad)
   }
-  df
-}
-max_rows <- max(nrow(col1), nrow(col2), nrow(col3))
-tmp <- bind_cols(
-  pad_df(col1, max_rows),
-  pad_df(col2, max_rows),
-  pad_df(col3, max_rows)
-)
-
-
-length(col2) = length(col1)
-length(col3) = length(col1)
-colnames(tmp) <- c(colnames(col1), colnames(col2), colnames(col3))
-
-
-knitr::kable(
-    tmp,
-
-  col.names = colnames(tmp),
-      na        = "",
-  caption = "Life Expectancy at Birth Projected Median 2022-2062.",
-  align = paste(rep("ccc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|> 
-    kable_styling(font_size = 10)
+  
+  # Build wide table: age | male(ax,bx) | female(ax,bx) || age | male(ax,bx) | female(ax,bx)
+  wide <- bind_cols(left_half, right_half)
+  
+  # Column names (will be overridden by kable header)
+  colnames(wide) <- c(
+    "Age", "ax", "bx", "ax", "bx",
+    "Age", "ax", "bx", "ax", "bx"
+  )
+  
+  # Multi-level header spanning groups
+  # Level 1: two big sections
+  # Level 2: Age | Male | Female | Age | Male | Female
+  wide |>
+    kbl(
+      booktabs  = TRUE,
+      align     = c("c", "r", "r", "r", "r", "c", "r", "r", "r", "r"),
+      linesep   = "",
+       digits = sig_digits,
+      caption = "Lee-Carter parameters ax and bx by age and sex"
+    ) |>
+    kable_styling(
+      latex_options = c("hold_position"),
+    ) |>
+    add_header_above(
+      c(" " = 1, "Male" = 2, "Female" = 2,
+        " " = 1, "Male" = 2, "Female" = 2)
+    ) |>
+ 
+    column_spec(6, border_left = TRUE)  # visual divider between sections
+      }
+threshold <- 100
+df <- rio::import("graphs/01_ax_bx.csv") 
+make_kable(df)|> kable_styling(full_width = TRUE, font_size = 8)
 
 ```
-\newpage
+
 
 ```{r}
 #| echo: false
@@ -1554,57 +1299,21 @@ knitr::kable(
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
-sig_digits=4
-lt <- rio::import("graphs/01_lifetables.csv")
-tmp   <- lt |>  filter( type == "upper" ) |> filter(age ==0)  |> select(c(year,ex,sex)) |> pivot_wider(names_from =sex, values_from = ex) |> arrange(year)
-
-n_cols <- 3
-n   <- nrow(tmp)
-idx <- ceiling(n / n_cols)
-
-col1 <- tmp[1:idx, ]
-col2 <- tmp[(idx + 1):(2 * idx),]
-col3 <- tmp[(2 * idx + 1):n, ]
-
-pad_df <- function(df, n) {
-  if (nrow(df) < n) {
-    extra <- n - nrow(df)
-    df <- bind_rows(df, as.data.frame(matrix(NA, extra, ncol(df), 
-                                              dimnames = list(NULL, names(df)))))
-  }
-  df
-}
-max_rows <- max(nrow(col1), nrow(col2), nrow(col3))
-tmp <- bind_cols(
-  pad_df(col1, max_rows),
-  pad_df(col2, max_rows),
-  pad_df(col3, max_rows)
-)
-
-
-length(col2) = length(col1)
-length(col3) = length(col1)
-colnames(tmp) <- c(colnames(col1), colnames(col2), colnames(col3))
-
-
-knitr::kable(
-    tmp,
-
-  col.names = colnames(tmp),
-      na        = "",
-  caption = "Life Expectancy at Birth Projected 97.5 Percentile 2022-2062.",
-  align = paste(rep("ccc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|> 
-    kable_styling(font_size = 10)
+df <- rio::import("graphs/01_kt.csv") |> pivot_wider(names_from=sex, values_from = kt)
+n <- as.integer(nrow(df)/2)
+left <- df[1:n, ]
+right <- df[(n+1):nrow(df), ]
+wide <- bind_cols(left, right)
+wide|> kable(
+  col.names = c("Year", "Male kt", "Female kt", "Year", "Male kt", "Female kt"),
+  align = c("c", "r", "r", "c", "r", "r"),
+  booktabs = TRUE,
+  caption = "Lee-Carter parameter kt by year and sex"
+) |>
+  kable_styling(full_width = TRUE, font_size = 8)
 
 ```
-\newpage
+
 
 ```{r}
 #| echo: false
@@ -1612,115 +1321,78 @@ knitr::kable(
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
+
 sig_digits=4
-lt <- rio::import("graphs/01_lifetables.csv")
-tmp   <- lt |>  filter( type == "lower" ) |> filter(age ==0)  |> select(c(year,ex,sex)) |> pivot_wider(names_from =sex, values_from = ex) |> arrange(year)
 
-n_cols <- 3
-n   <- nrow(tmp)
-idx <- ceiling(n / n_cols)
-
-col1 <- tmp[1:idx, ]
-col2 <- tmp[(idx + 1):(2 * idx),]
-col3 <- tmp[(2 * idx + 1):n, ]
-
-pad_df <- function(df, n) {
-  if (nrow(df) < n) {
-    extra <- n - nrow(df)
-    df <- bind_rows(df, as.data.frame(matrix(NA, extra, ncol(df), 
-                                              dimnames = list(NULL, names(df)))))
-  }
-  df
-}
-max_rows <- max(nrow(col1), nrow(col2), nrow(col3))
-tmp <- bind_cols(
-  pad_df(col1, max_rows),
-  pad_df(col2, max_rows),
-  pad_df(col3, max_rows)
-)
-
-
-length(col2) = length(col1)
-length(col3) = length(col1)
-colnames(tmp) <- c(colnames(col1), colnames(col2), colnames(col3))
-
-
-knitr::kable(
-    tmp,
-
-  col.names = colnames(tmp),
-      na        = "",
-  caption = "Life Expectancy at Birth Projected 2.5 Percentile 2022-2062.",
-  align = paste(rep("ccc", n_cols), collapse = ""),
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|> 
-    kable_styling(font_size = 10)
+bootstrap_residuals_ax   |>
+  mutate(
+    val   = paste0(round(q_0500, sig_digits),   " (", round(q_0025, sig_digits),   ", ", round(q_0975, sig_digits),   ")"),
+  ) |> rename(ax=val) |> select(age,ax,sex) |> pivot_wider(names_from = sex, values_from = ax) |> select(age, male, female) |> kable(
+    col.names = c("Age", "Male ax (2.5%, 97.5%)", "Female ax (2.5%, 97.5%)"), caption = "Bootstrap confidence intervals for ax"   
+  ) |> kable_styling(full_width = FALSE, font_size = 8)
 
 ```
-\newpage
 
-### Fitted parameters $A_x$ and $B_x$
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
-sig_digits=4
-params <- rio::import("graphs/01_ax_bx.csv") |> pivot_wider(names_from = c(sex) , values_from = c(ax,bx)) |> arrange(age) |> select(c(age, ax_male, bx_male, ax_female, bx_female)) |> rename("Age"=age, "Ax Male"=ax_male, "Bx Male"=bx_male,, "Ax Female"=ax_female, "Bx Female"=bx_female)
 
-params |> knitr::kable(
-       col.names = colnames(params),
-     caption = "Fitted Ax and Bx Parameters Puerto Rico 1950-2021",
-  align = "rcccc",
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|> 
-    kable_styling(font_size = 10)
+sig_digits=4
+
+bootstrap_residuals_bx   |>
+  mutate(
+    val   = paste0(round(q_0500, sig_digits),   " (", round(q_0025, sig_digits),   ", ", round(q_0975, sig_digits),   ")"),
+  ) |> rename(bx=val) |> select(age,bx,sex) |> make_overflow_kable3(
+    index_col = "age",
+    value_cols = "bx",
+    group_col = "sex",
+    caption = "Bootstrap confidence intervals for bx"
+  )
 ```
-\newpage
-### Fitted parameter $K_t$
+
+
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
+
 sig_digits=4
-params <- rio::import("graphs/01_kt.csv") |> pivot_wider(names_from = c(sex) , values_from = c(kt))|> arrange(year) 
-n_rows <- nrow(params)
-n_cols = 3
-col1 <- params[1:floor(n_rows/n_cols), ]
-col2 <- params[(floor(n_rows/n_cols)+1):(2*floor(n_rows/n_cols)), ]
-col3 <- params[(2*floor(n_rows/n_cols)+1):n_rows, ]
-rownames(col1) <- rownames(col2) <- rownames(col3) <- NULL
-final_params <- cbind(col1, col2, col3)
 
-
-final_params |> knitr::kable(
-       col.names = colnames(final_params),
-     caption = "Fitted Kt Parameter Puerto Rico 1950-2021",
-  align = "ccc",
-  digits = sig_digits,
-  booktabs  = TRUE      # cleaner lines in PDF
-)|>
-    kableExtra::kable_styling(
-    latex_options = c("hold_position", "scale_down"),  # PDF
-    full_width    = FALSE
-  )|> 
-    kable_styling(font_size = 10)
+bootstrap_residuals_kt   |>
+  mutate(
+    val   = paste0(round(q_0500, sig_digits),   " (", round(q_0025, sig_digits),   ", ", round(q_0975, sig_digits),   ")"),
+  ) |> rename(kt=val) |> select(year,kt,sex) |> make_overflow_kable3(
+    index_col = "year",
+    value_cols = "kt",
+    group_col = "sex",
+    caption = "Bootstrap confidence intervals for kt"
+  )
 ```
-\newpage
 
+
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+
+sig_digits=4
+
+bootstrap_residuals_kt   |>
+  mutate(
+    val   = paste0(round(q_0500, sig_digits),   " (", round(q_0025, sig_digits),   ", ", round(q_0975, sig_digits),   ")"),
+  ) |> rename(kt=val) |> select(year,kt,sex) 
+```
+
+
+\newpage
 
 ## Code and Source Data
 
