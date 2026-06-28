@@ -1,25 +1,34 @@
 ---
-title: "Probabilistic Life Expectancy Projections for Puerto Rico Using the Lee-Carter Model"
+title: ""
+#title: "Probabilistic Life Expectancy Projections for Puerto Rico Using the Lee-Carter Model"
 format:
   pdf:
+    tbl-colwidths: auto
     fig-width: 8
     fig-height: 4
     geometry:
       - top=1in
       - bottom=1in
       - right=1in
-      - left=1.5in
+      - left=1in
     fontsize: 12pt
     mainfont: "Arial"
     linestretch: 2
     indent: true
     header-includes: |
+      \usepackage{setspace}
+      \usepackage{ragged2e}
       \setlength{\parindent}{0.5in}
       \usepackage{indentfirst}
+      \AtBeginDocument{\thispagestyle{empty}}
     toc: true
     toc-depth: 2
     toc-title: "Table of Contents"
+    lof: true
+    lot: true
     documentclass: report
+    include-before-body: titlepage.tex   # ← injected BEFORE toc/figures/tables
+
     include-in-header:
       text: |
         \usepackage{titlesec}
@@ -159,13 +168,38 @@ names(combined) <- new_names
 
   tbl
 }
-```
 
+
+
+```
 
 # Abstract
 
-Puerto Rico faces acute demographic challenges, including a rapidly aging population, shrinking tax base, and institutional fiscal stress—that demand robust, forward-looking mortality projections. This thesis applies the Lee-Carter model to Puerto Rico's age and sex specific mortality data from 1950 to 2023, decomposing historical death rates into their baseline, sensitivity, and trend components. A bootstrapped simulation framework generates 500 probabilistic mortality trajectories, producing 40-year stochastic forecasts of age-specific death rates and life expectancy at birth with 95% confidence intervals. Results project median life expectancy at birth reaching 82 years for males and 94 years for females by 2062, with male projections broadly consistent with those of the UN World Population Prospects, the U.S. Census Bureau's International Data Base, and the IHME. Female projections, however, exhibit pronounced upward skew that exceeds best-practice benchmarks in the literature, a pattern traced to data irregularities in the 2010–2023 period rather than modeling error. Key structural findings include a plateau in young adult male mortality attributable to excess violence-related deaths and high sensitivity of infant and child mortality to the overall trend index. The wide confidence intervals produced are themselves a substantive finding, signaling that demographic uncertainty in Puerto Rico constitutes a genuine planning risk warranting scenario-based fiscal and healthcare policy rather than single-point forecasts. Future work should implement a hierarchical Bayesian model and investigate the underlying data quality issues driving the female projection skew.
-
+Puerto Rico faces acute demographic challenges, including a rapidly
+aging population, a shrinking tax base, and institutional fiscal stress
+that demand robust, forward-looking mortality projections. This thesis
+applies the Lee-Carter model to Puerto Rico's age and sex specific
+mortality data from 1950 to 2023, decomposing historical death rates
+into their baseline, sensitivity, and trend components. A bootstrapped
+simulation generates 500 probabilistic mortality trajectories, producing
+40 year stochastic forecasts of age-specific death rates and life
+expectancy at birth with 95% confidence intervals. Results project
+median life expectancy at birth reaching 82 years for males and 94 years
+for females by 2062, with male projections broadly consistent with those
+of the UN World Population Prospects, the U.S. Census Bureau's
+International Data Base, and the IHME. Female projections, however,
+exhibit pronounced upward skew that exceeds best-practice benchmarks in
+the literature, a pattern traced to data irregularities in the 2010–2023
+period rather than modeling error. Key structural findings include a
+plateau in young adult male mortality attributable to excess
+violence-related deaths and high sensitivity of infant and child
+mortality to the overall trend index. The wide confidence intervals
+produced are themselves a substantive finding, signaling that
+demographic uncertainty in Puerto Rico constitutes a genuine planning
+risk warranting scenario based fiscal and healthcare policy rather than
+single-point forecasts. Future work should implement a hierarchical
+Bayesian model and investigate the underlying data quality issues
+driving the female projection skew.
 
 # Introduccion
 
@@ -303,7 +337,7 @@ model, identify sources of uncertainty and bias in the projection and
 provide evidence based recommendations for improving future Puerto Rico
 specific mortality forecasting efforts
 
-# Literary Review
+# Literature Review
 
 ```{r}
 #| include: false
@@ -492,8 +526,46 @@ parameter captures the general shape of the mortality curve, which
 typically shows high mortality rates at very young ages, a decline in
 mortality during childhood and early adulthood, and then an increase in
 mortality as people age. Ours graphs as follows.
+```{r}
+#| label: lc_ax
+#| fig-cap: "lc parameter ax"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+plot_params <- function(){
+    frame<- rio::import("graphs/01_ax_bx.csv")
+    
+    plt1<- ggplot(frame, aes(x=age,y=ax,color=sex, group=sex)) +
+        geom_line(aes(), size=1) +
+        labs(title="LC parameter ax", x="Age", y="ax") +
+        theme_bw()+
+        scale_color_manual(values = c("female" = "red", "male" = "blue")) +
+        theme(legend.position = "bottom")
+    plt2<- ggplot(frame, aes(x=age,y=bx,color=sex, group=sex)) +
+        geom_line(aes(), size=1) +
+        labs(title="LC parameter bx", x="Age", y="bx") +
+        theme_bw()+
+        scale_color_manual(values = c("female" = "red", "male" = "blue")) +
+        theme(legend.position = "bottom")
 
-![](graphs/01_ax.png){fig-align="center"}
+    kt_frame<-rio::import("graphs/01_kt.csv")
+    plt3<- ggplot(kt_frame, aes(x=year,y=kt,color=sex, group=sex)) +
+        geom_line(aes(), size=1) +
+        labs(title="LC parameter kt", x="Year", y="Kt") +
+        theme_bw()+
+        scale_color_manual(values = c("female" = "red", "male" = "blue")) +
+        theme(legend.position = "bottom")
+    return(structure(  list(  ax_plot = plt1,  bx_plot = plt2,  kt_plot = plt3 )  ))
+    
+}
+
+
+plts <- plot_params()
+plts$ax_plot
+```
 
 Here, we can see the drastic fall of the baseline log mortality after
 the first year of life. This is followed by the steady increase as one
@@ -518,7 +590,18 @@ other words this parameter tends to be context specific and can vary
 significantly between populations and time periods. For our case, the bx
 parameter graphs as follows.
 
-![](graphs/01_bx.png){fig-align="center"}
+```{r}
+#| label: lc_bx
+#| fig-cap: "lc parameter bx"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+
+plts$bx_plot
+```
 
 Here we can see the sensitivity of the mortality index to changes in
 mortality. The highest sensitivity is at early life. This is due to the
@@ -549,7 +632,18 @@ events such as epidemics, wars, or economic downturns that can
 temporarily increase mortality rates. For our case, the kt parameter
 graphs as follows.
 
-![](graphs/01_kt.png){fig-align="center"}
+```{r}
+#| label: lc_kt
+#| fig-cap: "lc parameter kt"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+
+plts$kt_plot
+```
 
 The index corresponds to the average level of mortality for that year.
 There are fluctuations in the index, a spike in the mid 1960s, the
@@ -583,8 +677,47 @@ of zero between the sexes and the range between the 95% quantiles
 between men and woman are withing 20% of each other. In short both share
 the same general shape of uncertainty with the males having a slight
 offset towards the negative.
+```{r}
+#| label: lc_boot_ax
+#| fig-cap: "Bootstrap residuals for ax"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+plot_boot_params <- function(){
 
-![](graphs/01_boot_ax.png){fig-align="center"}
+    df <- rio::import("graphs/01_boot_df_ax_bx.csv")
+    kt <- rio::import("graphs/01_boot_df_kt.csv")    
+    plt4 <- ggplot(df, aes(x=as.factor(age), y=delta_ax)) +
+        geom_point() +
+        theme_bw() +
+        facet_wrap(~sex, ncol=1)+
+        labs(title="Bootstrap residuals for ax", x="Age", y="ax")
+    plt5 <- ggplot(df, aes(x=as.factor(age), y=delta_bx)) +
+        geom_point() +
+        theme_bw() +
+        facet_wrap(~sex, ncol=1)+
+        labs(title="Bootstrap residuals for bx", x="Age", y="bx")
+    plt6 <- ggplot(kt, aes(x=year, y=delta_kt)) +
+        geom_point() +
+        theme_bw() +
+        facet_wrap(~sex, ncol=1)+
+        labs(title="Bootstrap residuals for kt", x="year", y="kt")
+
+    
+    return(structure(list(boot_ax_plot=plt4, boot_bx_plot=plt5, boot_kt_plot=plt6 )))
+}
+
+plts_boot<-plot_boot_params()
+plts_boot$boot_ax_plot
+
+
+
+
+
+```
 \newpage
 
 ```{r}
@@ -630,7 +763,19 @@ residuals and by a larger margin. This leads us to derive that the male
 sensitivity to changes in the mortality index is much more volatile than
 the female sensitivity.
 
-![](graphs/01_boot_bx.png){fig-align="center"}
+```{r}
+#| label: lc_boot_bx
+#| fig-cap: "Bootstrap residuals for bx"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+
+plts_boot$boot_bx_plot
+
+```
 
 ```{r}
 #| echo: false
@@ -671,7 +816,19 @@ associated with it. The medians trend upwards over time and the range
 spread is similar on both sexes. Generalizing, there is a clear increase
 in uncertainty as time progresses.
 
-![](graphs/01_boot_kt.png){fig-align="center"}
+```{r}
+#| label: lc_boot_kt
+#| fig-cap: "Bootstrap residuals for kt"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+
+plts_boot$boot_kt_plot
+
+```
 
 ```{r}
 #| echo: false
@@ -734,7 +891,35 @@ point differential by the end of the projection period. Of note is the
 skew that the median projections have towards the lower bound indicating
 a more optimistic projection for the future mortality trends.
 
-![](graphs/01_simulated_kt.png){fig-align="center"}
+```{r}
+#| label: simulated_kt
+#| fig-cap: "Simulated kt by sex 2022-2072"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+#| 
+sim_kt<-rio::import("graphs/01_simulated_kt.csv")
+plt_sim_kt <- sim_kt |> ggplot(aes(x = year)) +
+    geom_line(aes(y = q_0975, color = sex, linetype = "95% Interval")) +
+    geom_line(aes(y = q_0500, color = sex, linetype = "Median")) +
+    geom_line(aes(y = q_0025, color = sex, linetype = "95% Interval")) +
+    scale_color_manual(values = c("male" = "blue", "female" = "red")) +
+    scale_linetype_manual(values = c("Median" = "solid", "95% Interval" = "dashed")) +
+    theme_bw() +
+    labs(
+        title = "Simulated kt by sex 2022-2072",
+        x = "Year",
+        y = "Kt",
+        color = "Sex",
+        linetype = "Estimate"
+    ) +
+    theme(legend.position = "bottom")
+plt_sim_kt
+```
+
 
 ```{r}
 #| echo: false
@@ -799,9 +984,14 @@ deathrates |> filter(year%%25==0) |> filter(age %in% c(20,40,60))|> filter( year
 ```
 
 ```{r}
+#| label: Projected_log_death_rates
+#| fig-cap: "Projected log mortality rates by age group and sex"
 #| echo: false
+#| message: false
+#| warning: false
 #| fig-height: 6
 #| fig-width: 10
+#| fig-align: center
 
 g <- deathrates|>
 
@@ -819,9 +1009,7 @@ g <- deathrates|>
     theme_bw() +
     theme(legend.text = element_text(), legend.position = "bottom")
 
-fig_width <- 8
-fig_height <- 4
-ggsave("graphs/projected_log_mortality.png",plot = g, width=fig_width, height=fig_height)
+
 
 g
 #
@@ -889,9 +1077,14 @@ knitr::kable(
 ```
 
 ```{r}
+#| label: Projected_Life_Expectancy_at_Birth
+#| fig-cap: "Projected Life Expectancy at Birth"
 #| echo: false
+#| message: false
+#| warning: false
 #| fig-height: 6
 #| fig-width: 10
+#| fig-align: center
 g<-ggplot() +
     geom_line(data=lifetables |> filter(type=="historic") |> filter(age==0), aes(x=year, y=ex, color="Historic", group=sex, linetype = "Historic" ))  +
     geom_line(data=lifetables |> filter(type=="upper")    |> filter(age==0), aes(x=year, y=ex, color="Forcast",  group=sex, linetype = "95%")) +
@@ -909,7 +1102,6 @@ g<-ggplot() +
     scale_color_manual(values = c("Historic" = "black","Forcast"="blue"))+
     theme_bw()  +
     theme(legend.position = "bottom")
-ggsave("graphs/projected_life_expectancy.png",plot = g, width=fig_width, height=fig_height)
 g
 
 ```
@@ -1008,7 +1200,43 @@ the IDB projections while the males will consistently lag behind the IDB
 projections. In both cases, the IDB projections lie within our
 confidence intervals.
 
-![](graphs/02_compare_idb.png) With the WPP, we can see a different
+```{r}
+#| label: Comparison IDB
+#| fig-cap: "Comparison of our projections with the IDB: 2023:2062"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+entities <- rio::import("graphs/02_comparison_data.csv")
+
+compare_plot <- ggplot() +
+    geom_ribbon( data=entities |> filter(age==0) |> filter(source=="Our Projections"), aes(x = year, ymax=upper, ymin =lower,color=source, fill = "grey90"))   +
+    geom_line(   data=entities |> filter(age==0) |> filter(source=="Our Projections"), aes(x = year, y = central,color=source))     +
+    geom_line(   data=entities |> filter(age==0) |> filter(source=="IDB"),                                        aes(x = year, y = central,color=source))     +
+    geom_point(  data=entities |> filter(year%%10==0) |> filter(age==0) |> filter(source=="Our Projections"),                            aes(x = year, y = central,shape=source))     +
+    geom_point(  data=entities |> filter(year%%10==0) |> filter(age==0) |> filter(source=="IDB"),                                        aes(x = year, y = central,shape=source))     +
+    facet_wrap(~sex) +
+    scale_color_manual(values = c("Our Projections" = "blue", "WPP" = "red", "IDB" = "red", "GBD" = "red", "historic" = "black"))+
+    scale_fill_manual( values = c("grey90" = "#aaaaaa66"))+
+    xlim(2020, 2065) +
+    theme_bw() +
+    theme(legend.position = "bottom")+
+    guides(
+        fill  = "none",
+        color = guide_legend(override.aes = list(fill = NA, linetype = 0, linewidth = 1)),
+        shape = guide_legend(override.aes = list(colour = c("red", "blue"), linewidth = 1))
+    )+
+    labs(
+        title="Comparison of our projections with the IDB: 2023:2062",
+        x = "Year",
+        y = "Life Expectancy at Birth"
+    )
+compare_plot
+```
+
+With the WPP, we can see a different
 pattern. In our case, our median line for female life expectancy starts
 above the WPP median but instead of tracking the WPP median, it diverges
 upwards tracking the WPP upper bound, while our female upper bound
@@ -1019,7 +1247,42 @@ bound until the second half of the projection period where it diverges
 upwards, while the lower bound is always below the WPP lower bound. This
 is a more plausible pattern.
 
-![](graphs/02_compare_wpp.png) Finally, the IHME projections are much
+```{r}
+#| label: Comparison WPP
+#| fig-cap: "Comparison of our projections with the WPP: 2023:2062"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+
+compare_plot <- ggplot() +
+    geom_ribbon( data=entities |> filter(age==0) |> filter(source=="Our Projections"), aes(x = year, ymax=upper, ymin =lower,color=source, fill = "grey90"))   +
+    geom_ribbon( data=entities |> filter(age==0) |> filter(source=="WPP"),             aes(x = year, ymax=upper, ymin =lower,color=source, fill = "grey90"))   +
+    geom_line(   data=entities |> filter(age==0) |> filter(source=="Our Projections"), aes(x = year, y = central,color=source))     +
+    geom_line(   data=entities |> filter(age==0) |> filter(source=="WPP"),                                        aes(x = year, y = central,color=source))     +
+    geom_point(  data=entities |> filter(year%%10==0) |> filter(age==0) |> filter(source=="Our Projections"),                            aes(x = year, y = central,shape=source))     +
+    geom_point(  data=entities |> filter(year%%10==0) |> filter(age==0) |> filter(source=="WPP"),                                        aes(x = year, y = central,shape=source))     +
+    facet_wrap(~sex) +
+    scale_color_manual(values = c("Our Projections" = "blue", "WPP" = "red", "IDB" = "red", "GBD" = "red", "historic" = "black"))+
+    scale_fill_manual( values = c("grey90" = "#aaaaaa66"))+
+    xlim(2020, 2065) +
+    theme_bw() +
+    theme(legend.position = "bottom")+
+    guides(
+        fill  = "none",
+        color = guide_legend(override.aes = list(fill = NA, linetype = 0, linewidth = 1)),
+        shape = guide_legend(override.aes = list(colour = c("blue", "red"), linewidth = 1))
+    )+
+    labs(
+        title="Comparison of our projections with the WPP: 2023:2062",
+        x = "Year",
+        y = "Life Expectancy at Birth"
+    )
+compare_plot
+```
+Finally, the IHME projections are much
 more difficult to compare to our projections. They do provide confidence
 intervals, but they dont produce the tipycal fanning out of the
 confidence intervals that we would expect from a stochastic model.
@@ -1035,7 +1298,46 @@ medians behave very differently from the IHME medians, with our medians
 showing a continued increase in life expectancy while the IHME medians
 show a plateauing of life expectancy. This is a significant divergence
 from our projections and the other benchmarks.
-![](graphs/02_compare_gbd.png)
+
+```{r}
+#| label: Comparison GDB
+#| fig-cap: "Comparison of our projections with the GBD: 2023:2062"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+
+
+compare_plot <- ggplot() +
+    geom_ribbon( data=entities |> filter(age==0) |> filter(source=="Our Projections"), aes(x = year, ymax=upper, ymin =lower,color=source, fill = "grey90"))   +
+    geom_ribbon( data=entities |> filter(age==0) |> filter(source=="GBD"),             aes(x = year, ymax=upper, ymin =lower,color=source, fill = "grey90"))   +
+    geom_line(   data=entities |> filter(age==0) |> filter(source=="Our Projections"), aes(x = year, y = central,color=source))     +
+    geom_line(   data=entities |> filter(age==0) |> filter(source=="GBD"),                                        aes(x = year, y = central,color=source))     +
+    geom_point(  data=entities |> filter(year%%10==0) |> filter(age==0) |> filter(source=="Our Projections"),                            aes(x = year, y = central,shape=source))     +
+    geom_point(  data=entities |> filter(year%%10==0) |> filter(age==0) |> filter(source=="GBD"),                                        aes(x = year, y = central,shape=source))     +
+    facet_wrap(~sex) +
+    scale_color_manual(values = c("Our Projections" = "blue", "WPP" = "red", "IDB" = "red", "GBD" = "red", "historic" = "black"))+
+    scale_fill_manual( values = c("grey90" = "#aaaaaa66"))+
+    xlim(2020, 2065) +
+    theme_bw() +
+    theme(legend.position = "bottom")+
+    guides(
+        fill  = "none",
+        color = guide_legend(override.aes = list(fill = NA, linetype = 0, linewidth = 1)),
+        shape = guide_legend(override.aes = list(colour = c("red", "blue"), linewidth = 1))
+    )+
+    labs(
+        title="Comparison of our projections with the GBD: 2023:2062",
+        x = "Year",
+        y = "Life Expectancy at Birth"
+    )
+compare_plot
+
+
+```
+
 
 When we see the then median of the male projections for the WPP and IDB,
 we see that they are quite close to our median projections, with our
@@ -1069,10 +1371,83 @@ by Ronald Lee, and approaches the 2.5 year per decade limit stated by
 Oeppen and Vaubel. This isn't even considering the upper bound of our
 projections, which exceeds the 2.5 year per decade limit by a wide
 margin, reaching 5.0 years per decade as we show below
-![](graphs/02_mediancompare.png)
+```{r}
+#| label: Comparison median
+#| fig-cap: "Comparison of our projections with WPP upper bound"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+#| 
+femproj<-rio::import("graphs/03_compare_fem_proj.csv")
+femwpp<-rio::import("graphs/03_compare_fem_wpp.csv")
+points_proj_25<-rio::import("graphs/03_compare_points_proj_25.csv")
+points_proj_2<-rio::import("graphs/03_compare_points_proj_2.csv")
+points_proj_5<-rio::import("graphs/03_compare_points_proj_5.csv")
 
-![](graphs/02_upperboundcompare.png)
 
+mediancompareupperbound<- ggplot() +
+    geom_line(  data=femproj, aes(x = year, y = central,color=source)) +
+    geom_line(  data=femwpp,  aes(x = year, y = upper,  color=source)) +
+    geom_line(  data=points_proj_25,  aes(x=x,y=y,color="Our Projections"), linetype="dashed") +
+    geom_line(  data=points_proj_2,  aes(x=x,y=y,color="Our Projections"), linetype="dashed") +
+    geom_point( data=femproj|> filter(year%%10==0), aes(x = year, y = central,shape=source)) +
+    geom_point( data=femwpp|> filter(year%%10==0),  aes(x = year, y = upper,  shape=source))+    
+
+    scale_color_manual(values = c("Our Projections" = "blue", "WPP" = "red"))+
+    scale_fill_manual( values = c("grey90" = "#aaaaaa66"))+
+    xlim(2020, 2070) +
+    theme_bw() +
+    theme(legend.position = "bottom")+
+    guides(
+        fill  = "none",
+        color = guide_legend(override.aes = list(fill = NA, linetype = 0, linewidth = 1)),
+        shape = guide_legend(override.aes = list(colour = c("blue", "red"), linewidth = 1))
+    ) +
+    labs(
+        title="Comparison of our projections with WPP upper bound and projection median with theoretical limit slopes"
+    )
+mediancompareupperbound
+
+
+
+```
+
+
+```{r}
+#| label: Comparison upperbound
+#| fig-cap: "Comparison of our upperbound with a fixed slope"
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+#| fig-align: center
+#| 
+upperboundcompare<-ggplot() +
+    geom_line(  data=femproj, aes(x = year, y = upper,  color=source)) +
+    geom_line(  data=points_proj_5,  aes(x=x,y=y,color="Our Projections"), linetype="dashed") +
+    geom_point( data=femproj|> filter(year%%10==0), aes(x = year, y = upper,shape=source)) +
+
+    scale_color_manual(values = c("Our Projections" = "blue"))+
+    scale_fill_manual( values = c("grey90" = "#aaaaaa66"))+
+    xlim(2020, 2070) +
+    theme_bw() +
+    theme(legend.position = "bottom")+
+    guides(
+        fill  = "none",
+        color = guide_legend(override.aes = list(fill = NA, linetype = 0, linewidth = 1)),
+        shape = guide_legend(override.aes = list(colour = c("blue"), linewidth = 1))
+    ) +
+    labs(
+        title="Upperbound projection with comparison slope of 5 years per decade"
+    )
+
+upperboundcompare
+
+```
 ## The Skewing of female mortality
 
 Its well known that the Lee-Carter model can produce skewed projections
@@ -1169,6 +1544,7 @@ artifact but rather a reflection of the data and the events that have
 shaped mortality in Puerto Rico in recent years.
 
 # Recomendations
+
 The underlying model we used, the Lee-Carter model, is a widely used and
 well-established model for projecting mortality and life expectancy.
 Having said that, its clear that the model has limitations, particularly
@@ -1210,7 +1586,9 @@ population in Puerto Rico, taking into account the wide range of
 possible outcomes and the significant uncertainty in the projections as
 well as serve as a stand-in for the more complex hierarchical Bayesian
 model until we are able to implement it.
-
+```{=latex}
+\begin{singlespace}
+```
 # References
 
 ::: {#refs}
@@ -1221,77 +1599,52 @@ model until we are able to implement it.
 # Apendix
 
 ## Tables
+
+
+
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
-make_kable <- function(df, cols_per_section = 1) {
-  # df must have columns: age, ax, bx, sex
-  # cols_per_section: how many age-group sections to display side-by-side
-  
-  library(dplyr)
-  library(knitr)
-  library(kableExtra)
-  
-  # Split by sex
-  male   <- df |> filter(sex == "male")   |> select(age, ax, bx)
-  female <- df |> filter(sex == "female") |> select(age, ax, bx)
-  
-  # Join on age so rows align
-  combined <- left_join(male, female, by = "age", suffix = c("_m", "_f")) |>
-    rename(ax_m = ax_m, bx_m = bx_m, ax_f = ax_f, bx_f = bx_f)
-  
-  n      <- nrow(combined)
-  half   <- ceiling(n / 2)
-  
-  # Split into two halves to place side-by-side
-  left_half  <- combined[1:half, ]
-  right_half <- combined[(half + 1):n, ]
-  
-  # Pad right half if odd number of rows
-  if (nrow(right_half) < nrow(left_half)) {
-    pad <- left_half[1, ] |> mutate(across(everything(), ~NA))
-    right_half <- bind_rows(right_half, pad)
-  }
-  
-  # Build wide table: age | male(ax,bx) | female(ax,bx) || age | male(ax,bx) | female(ax,bx)
-  wide <- bind_cols(left_half, right_half)
-  
-  # Column names (will be overridden by kable header)
-  colnames(wide) <- c(
-    "Age", "ax", "bx", "ax", "bx",
-    "Age", "ax", "bx", "ax", "bx"
-  )
-  
-  # Multi-level header spanning groups
-  # Level 1: two big sections
-  # Level 2: Age | Male | Female | Age | Male | Female
-  wide |>
-    kbl(
-      booktabs  = TRUE,
-      align     = c("c", "r", "r", "r", "r", "c", "r", "r", "r", "r"),
-      linesep   = "",
-       digits = sig_digits,
-      caption = "Lee-Carter parameters ax and bx by age and sex"
-    ) |>
-    kable_styling(
-      latex_options = c("hold_position"),
-    ) |>
-    add_header_above(
-      c(" " = 1, "Male" = 2, "Female" = 2,
-        " " = 1, "Male" = 2, "Female" = 2)
-    ) |>
- 
-    column_spec(6, border_left = TRUE)  # visual divider between sections
-      }
-threshold <- 100
-df <- rio::import("graphs/01_ax_bx.csv") 
-make_kable(df)|> kable_styling(full_width = TRUE, font_size = 8)
+df <- rio::import("graphs/01_ax_bx.csv") |> pivot_wider(names_from=sex, values_from=c(ax, bx)) 
+#nrows <- as.integer(nrow(df) / 2)+1
+#left <- df[1:(nrows),]
+#right <- df[(nrows + 1):nrow(df),]
+#if (nrow(right) < nrow(left)) {
+#    pad <- left[1, ] |> mutate(across(everything(), ~NA))
+#    right <- bind_rows(right, pad)
+#}
+    
+
+#wide <- bind_cols(left, right) 
+#wide |> select(age...1, ax_male...2, bx_male...4, ax_female...3, bx_female...5,age...6, ax_male...7, bx_male...9, ax_female...8, bx_female...10) |>
+df |> kable(col.names = c("Age", "ax", "bx", "ax", "bx"), align = "c", booktabs = TRUE, caption = "ax and bx parameters by age and sex") |> kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),) |>
+  add_header_above(c(" " = 1, "Male" = 2, "Female" = 2))
 
 ```
 
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+df <- rio::import("graphs/01_kt.csv") |> pivot_wider(names_from=sex, values_from=kt) 
+nrows <- as.integer(nrow(df) / 2)
+left <- df[1:(nrows),]
+right <- df[(nrows + 1):nrow(df),]
+if (nrow(right) < nrow(left)) {
+    pad <- left[1, ] |> mutate(across(everything(), ~NA))
+    right <- bind_rows(right, pad)
+}
+    
+wide <- bind_cols(left, right) 
+wide |> select(year...1, male...2, female...3, year...4, male...5, female...6) |>
+ kable(col.names = c("Year", "Male", "Female","Year", "Male", "Female"), align = "c", booktabs = TRUE, caption = "kt parameter by year and sex") |> kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),)
+
+```
 
 ```{r}
 #| echo: false
@@ -1299,37 +1652,118 @@ make_kable(df)|> kable_styling(full_width = TRUE, font_size = 8)
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
-df <- rio::import("graphs/01_kt.csv") |> pivot_wider(names_from=sex, values_from = kt)
-n <- as.integer(nrow(df)/2)
-left <- df[1:n, ]
-right <- df[(n+1):nrow(df), ]
+
+sig_digits <- 5
+df <- bootstrap_residuals_ax    |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(q_0025, q_0500, q_0975)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(q_0500_male, sig_digits),   " (", round(q_0025_male, sig_digits),   ", ", round(q_0975_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(q_0500_female, sig_digits),   " (", round(q_0025_female, sig_digits),   ", ", round(q_0975_female, sig_digits),   ")")
+  )|> select(age, male_fmt, female_fmt) 
+
+df |> kable(col.names = c("Age", "Median (Lower, Upper)", "Median (Lower, Upper)"), align = "c", booktabs = TRUE, caption = "Bootstrap parameter ax by age and sex") |> kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),) |> add_header_above(c(" " = 1, "Male" = 1, "Female" = 1))
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+
+sig_digits <- 5
+df <- bootstrap_residuals_bx    |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(q_0025, q_0500, q_0975)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(q_0500_male, sig_digits),   " (", round(q_0025_male, sig_digits),   ", ", round(q_0975_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(q_0500_female, sig_digits),   " (", round(q_0025_female, sig_digits),   ", ", round(q_0975_female, sig_digits),   ")")
+  )|> select(age, male_fmt, female_fmt) 
+
+df |> kable(col.names = c("Age", "Median (Lower, Upper)", "Median (Lower, Upper)"), align = "c", booktabs = TRUE, caption = "Bootstrap parameter bx by age and sex") |> kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),) |> add_header_above(c(" " = 1, "Male" = 1, "Female" = 1))#|> kableExtra::kable_styling(font_size = 8)
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+
+sig_digits <- 5
+df <- bootstrap_residuals_kt    |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(q_0025, q_0500, q_0975)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(q_0500_male, sig_digits),   " (", round(q_0025_male, sig_digits),   ", ", round(q_0975_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(q_0500_female, sig_digits),   " (", round(q_0025_female, sig_digits),   ", ", round(q_0975_female, sig_digits),   ")")
+  )|> select(year, male_fmt, female_fmt) 
+
+df |> kable(col.names = c("Year", "Median (Lower, Upper)", "Median (Lower, Upper)"), align = "c", booktabs = TRUE, caption = "Bootstrap parameter kt by year and sex") |> kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),) |> add_header_above(c(" " = 1, "Male" = 1, "Female" = 1))#|> kableExtra::kable_styling(font_size = 8)
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+
+sig_digits <- 5
+df <- simulated_kt    |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(q_0025, q_0500, q_0975)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(q_0500_male, sig_digits),   " (", round(q_0025_male, sig_digits),   ", ", round(q_0975_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(q_0500_female, sig_digits),   " (", round(q_0025_female, sig_digits),   ", ", round(q_0975_female, sig_digits),   ")")
+  )|> select(year, male_fmt, female_fmt) 
+
+df |> kable(col.names = c("Year", "Median (Lower, Upper)", "Median (Lower, Upper)"), align = "c", booktabs = TRUE, caption = "Projected kt by year and sex") |> kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),) |> add_header_above(c(" " = 1, "Male" = 1, "Female" = 1))
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 6
+#| fig-width: 10
+
+sig_digits <- 5
+df<-deathrates    |>filter(type=="historic") |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(lower, central, upper)
+  ) |>
+  mutate(
+    male_fmt   = paste0(round(central_male, sig_digits),   " (", round(lower_male, sig_digits),   ", ", round(upper_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(central_female, sig_digits),   " (", round(lower_female, sig_digits),   ", ", round(upper_female, sig_digits),   ")")
+  )|> select(year,male_fmt, female_fmt,type, central_male,central_female, age) 
+
+
+tmp <- df |> filter(type=="historic")
+nrows <- as.integer(nrow(tmp) / 2)
+left <- tmp[1:(nrows),]
+right <- tmp[(nrows + 1):nrow(tmp),]
+if (nrow(right) < nrow(left)) {
+    pad <- left[1, ] |> mutate(across(everything(), ~NA))
+    right <- bind_rows(right, pad)
+}
 wide <- bind_cols(left, right)
-wide|> kable(
-  col.names = c("Year", "Male kt", "Female kt", "Year", "Male kt", "Female kt"),
-  align = c("c", "r", "r", "c", "r", "r"),
-  booktabs = TRUE,
-  caption = "Lee-Carter parameter kt by year and sex"
-) |>
-  kable_styling(full_width = TRUE, font_size = 8)
-
-```
-
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-height: 6
-#| fig-width: 10
-
-sig_digits=4
-
-bootstrap_residuals_ax   |>
-  mutate(
-    val   = paste0(round(q_0500, sig_digits),   " (", round(q_0025, sig_digits),   ", ", round(q_0975, sig_digits),   ")"),
-  ) |> rename(ax=val) |> select(age,ax,sex) |> pivot_wider(names_from = sex, values_from = ax) |> select(age, male, female) |> kable(
-    col.names = c("Age", "Male ax (2.5%, 97.5%)", "Female ax (2.5%, 97.5%)"), caption = "Bootstrap confidence intervals for ax"   
-  ) |> kable_styling(full_width = FALSE, font_size = 8)
+wide<-wide|> select(year...1, age...7,central_male...5, central_female...6,year...8, age...14, central_male...12, central_female...13)
+wide |> kable(col.names = c("Year", "Age", "Male","Female", "Year", "Age", "Male","Female"), align = "c", booktabs = TRUE, caption = "Historic Mortality Rates by year and sex") |> kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),) |> add_header_above(c(" " = 2, "Observed" = 2," " = 2, "Observed" = 2))#|> kableExtra::kable_styling(font_size = 8)
 
 ```
 
@@ -1340,19 +1774,23 @@ bootstrap_residuals_ax   |>
 #| fig-height: 6
 #| fig-width: 10
 
-sig_digits=4
-
-bootstrap_residuals_bx   |>
+sig_digits <- 5
+df<-deathrates    |>filter(type=="forecast") |>
+  pivot_wider(
+    names_from  = sex,
+    values_from = c(lower, central, upper)
+  ) |>
   mutate(
-    val   = paste0(round(q_0500, sig_digits),   " (", round(q_0025, sig_digits),   ", ", round(q_0975, sig_digits),   ")"),
-  ) |> rename(bx=val) |> select(age,bx,sex) |> make_overflow_kable3(
-    index_col = "age",
-    value_cols = "bx",
-    group_col = "sex",
-    caption = "Bootstrap confidence intervals for bx"
-  )
-```
+    male_fmt   = paste0(round(central_male, sig_digits),   " (", round(lower_male, sig_digits),   ", ", round(upper_male, sig_digits),   ")"),
+    female_fmt   = paste0(round(central_female, sig_digits),   " (", round(lower_female, sig_digits),   ", ", round(upper_female, sig_digits),   ")")
+  )|> select(year,male_fmt, female_fmt,type, central_male,central_female, age) 
 
+
+df<-df |> select(year, age, male_fmt,female_fmt)
+
+df |> kable(col.names = c("Year", "Age", "Male","Female"), align = "c", booktabs = TRUE, caption = "Projected Mortality Rates by year and sex") |> kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),) |> add_header_above(c(" " = 2, "Observed" = 2))
+
+```
 
 ```{r}
 #| echo: false
@@ -1360,21 +1798,13 @@ bootstrap_residuals_bx   |>
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
-
 sig_digits=4
-
-bootstrap_residuals_kt   |>
-  mutate(
-    val   = paste0(round(q_0500, sig_digits),   " (", round(q_0025, sig_digits),   ", ", round(q_0975, sig_digits),   ")"),
-  ) |> rename(kt=val) |> select(year,kt,sex) |> make_overflow_kable3(
-    index_col = "year",
-    value_cols = "kt",
-    group_col = "sex",
-    caption = "Bootstrap confidence intervals for kt"
-  )
+knitr::kable(
+    lifetables |> filter(year==max(year))|> filter(sex=="male") |> filter(type=="central") |>
+        arrange(age) |> select(age, ex, qx, lx, dx, Lx, Tx,ex) |> rename("Age"=age) |> mutate(ex = as.integer(ex), Lx = as.integer(Lx), Tx=as.integer(Tx)) |> arrange(Age),
+    digits = sig_digits,caption = "Life Table Male 2061."
+    )|>kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),)
 ```
-
-
 
 ```{r}
 #| echo: false
@@ -1382,19 +1812,23 @@ bootstrap_residuals_kt   |>
 #| warning: false
 #| fig-height: 6
 #| fig-width: 10
-
 sig_digits=4
-
-bootstrap_residuals_kt   |>
-  mutate(
-    val   = paste0(round(q_0500, sig_digits),   " (", round(q_0025, sig_digits),   ", ", round(q_0975, sig_digits),   ")"),
-  ) |> rename(kt=val) |> select(year,kt,sex) 
+knitr::kable(
+    lifetables |> filter(year==max(year))|> filter(sex=="female") |> filter(type=="central") |>
+        arrange(age) |> select(age, ex, qx, lx, dx, Lx, Tx,ex) |> rename("Age"=age) |> mutate(ex = as.integer(ex), Lx = as.integer(Lx), Tx=as.integer(Tx)) |> arrange(Age),
+    digits = sig_digits,caption = "Life Table Female 2061."
+    )|>kable_styling(full_width = FALSE,font_size = 8,latex_options = c("striped", "hold_position"),)
 ```
 
+```{=latex}
+\end{singlespace}
+```
+
+\newpage
 
 \newpage
 
 ## Code and Source Data
 
 All code and data used in this analysis is available in the GitHub
-repository
+repository: https://github.com/Angelsan720/Mortality-projections-2026
